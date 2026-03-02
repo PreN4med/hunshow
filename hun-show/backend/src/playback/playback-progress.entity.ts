@@ -26,7 +26,7 @@ export class PlaybackProgress {
 
   @UpdateDateColumn()
   updatedAt: Date;
-  // Relations testings
+  
   @ManyToOne(() => User, (user) => user.playbackProgress, {
     onDelete: 'CASCADE',
   })
