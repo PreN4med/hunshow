@@ -1,103 +1,49 @@
-"use client";
-import React, { useState } from "react";
+import Link from "next/link";
 export default function RegisterPage() {
-  const [values, setValues] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-  });
-  const handleInputChange = (event) => {
-    event.preventDefault();
-
-    const { name, value } = event.target;
-    setValues((values) => ({
-      ...values,
-      [name]: value,
-    }));
-  };
-
-  const [submitted, setSubmitted] = useState(false);
-  const [valid, setValid] = useState(false);
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (values.firstName && values.lastName && values.email) {
-      setValid(true);
-    }
-    setSubmitted(true);
-  };
-
   return (
-    <div className="form-container">
-      <form className="register-form" onSubmit={handleSubmit}>
-        {submitted && valid && (
-          <div className="success-message">
-            <h3>
-              {" "}
-              Welcome {values.firstName} {values.lastName}{" "}
-            </h3>
-            <div> Your registration was successful! </div>
-          </div>
-        )}
-        {!valid && (
-          <input
-            type="text"
-            placeholder="First Name"
-            name="firstName"
-            value={values.firstName}
-            onChange={handleInputChange}
-          />
-        )}
+    <main style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
+      <h1>Register</h1>
+      <p style={{ opacity: 0.75 }}>
+        Create your account to start sharing and watching student films.
+      </p>
 
-        {submitted && !values.firstName && (
-          <span id="first-name-error">Please enter a first name</span>
-        )}
-
-        {!valid && (
-          <input
-            type="text"
-            placeholder="Last Name"
-            name="lastName"
-            value={values.lastName}
-            onChange={handleInputChange}
-          />
-        )}
-
-        {submitted && !values.lastName && (
-          <span id="last-name-error">Please enter a last name</span>
-        )}
-
-        {!valid && (
-          <input
-            type="email"
-            placeholder="Email"
-            name="email"
-            value={values.email}
-            onChange={handleInputChange}
-          />
-        )}
-
-        {submitted && !values.password && (
-          <span id="email-error">Please enter an email address</span>
-        )}
-
-        {!valid && (
-          <input
-            type="password"
-            placeholder="Password"
-            name="password"
-            value={values.password}
-            onChange={handleInputChange}
-          />
-        )}
-
-        {submitted && !values.password && (
-          <span id="password-error">Please enter an password</span>
-        )}
-
-        {!valid && <button type="submit">Register</button>}
-      </form>
-    </div>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <input
+          placeholder="First Name"
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+        <input
+          placeholder="Last Name"
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+        <input
+          placeholder="Email (.edu)"
+          type="email"
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+        <input
+          placeholder="Password"
+          type="password"
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+        <button
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        >
+          Register
+        </button>
+        <Link href="/login" style={{
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #ccc",
+          textAlign: "center",
+          fontWeight: 500,
+          cursor: "pointer",
+          backgroundColor: "transparent",
+          display: "block"
+        }}>
+          Back to Login
+        </Link>
+      </div>
+    </main>
   );
 }

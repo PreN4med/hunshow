@@ -22,7 +22,16 @@ export default function LoginPage() {
         >
           Sign in
         </button>
-        <Link className="btn btnGhost" href="/register">
+        <Link href="/register" style={{
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #ccc",
+          textAlign: "center",
+          fontWeight: 500,
+          cursor: "pointer",
+          backgroundColor: "transparent",
+          display: "block"
+        }}>
           Register
         </Link>
       </div>

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, ChangeEvent, FormEvent } from "react";
 
 export default function RegisterPage() {
   const [values, setValues] = useState({
@@ -13,8 +13,9 @@ export default function RegisterPage() {
   const [valid, setValid] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
 
-  const handleInputChange = (event) => {
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     event.preventDefault();
     const { name, value } = event.target;
     setValues((values) => ({
@@ -23,7 +24,7 @@ export default function RegisterPage() {
     }));
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 

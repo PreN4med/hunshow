@@ -5,17 +5,20 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisModule } from './redis/redis.module';
-import { UsersModule } from './users/users.module'; // <-- added
+import { UsersModule } from './users/user.module';
+import { SessionsModule } from './sessions/session.module';
+import { WatchpartyModule } from './watchparty/watchparty.module';
+import { PlaybackModule } from './playback/playback.module';
 
 @Module({
   imports: [
     // Loads .env globally
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // Redis
+    // Redis placeholder
     RedisModule,
 
-    // PostgreSQL
+    // PostgreSQL, for users, sessions, watchparty metadata, playback progress
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
@@ -26,12 +29,12 @@ import { UsersModule } from './users/users.module'; // <-- added
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true, // Set to false in production
+        synchronize: true, // Auto-creates tables from entities, REMEMBER TO SET TO FALSE IN WHEN IN PROD
       }),
       inject: [ConfigService],
     }),
 
-    // MongoDB
+    // MongoDB, for video metadata, genres, subtitles
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
@@ -40,8 +43,10 @@ import { UsersModule } from './users/users.module'; // <-- added
       inject: [ConfigService],
     }),
 
-    // Users module <-- added
     UsersModule,
+    SessionsModule,
+    WatchpartyModule,
+    PlaybackModule,
   ],
   controllers: [AppController],
   providers: [AppService],

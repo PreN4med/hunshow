@@ -3,41 +3,35 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
+import { Session } from '../sessions/session.entity';
+import { WatchpartyMember } from '../watchparty/watchparty-member.entity';
+import { PlaybackProgress } from '../playback/playback-progress.entity';
 
-@Entity('users')
+@Entity()
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ unique: true })
-  username: string;
-
-  @Column({ unique: true })
   email: string;
 
+  @Column({ unique: true })
+  username: string;
+
   @Column()
-  password_hash: string;
-
-  @Column({ nullable: true })
-  first_name: string;
-
-  @Column({ nullable: true })
-  last_name: string;
-
-  @Column({ default: false })
-  is_verified: boolean;
-
-  @Column({ default: true })
-  is_active: boolean;
-
-  @Column({ default: 'user' })
-  role: string;
+  passwordHash: string;
 
   @CreateDateColumn()
-  created_at: Date;
+  createdAt: Date;
 
-  @UpdateDateColumn()
-  updated_at: Date;
+  @OneToMany(() => Session, (session) => session.user)
+  sessions: Session[];
+
+  @OneToMany(() => WatchpartyMember, (member) => member.user)
+  watchparties: WatchpartyMember[];
+
+  @OneToMany(() => PlaybackProgress, (progress) => progress.user)
+  playbackProgress: PlaybackProgress[];
 }
