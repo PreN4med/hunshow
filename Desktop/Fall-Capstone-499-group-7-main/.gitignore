@@ -1,0 +1,12 @@
+# Mac files
+.DS_Store
+*.DS_Store
+
+# node modules
+node_modules/
+
+# env files
+.env
+
+# Personal files - ignore everything outside hun-show
+../
