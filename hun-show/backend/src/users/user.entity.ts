@@ -5,7 +5,6 @@ import {
   CreateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { Session } from '../sessions/session.entity';
 import { WatchpartyMember } from '../watchparty/watchparty-member.entity';
 import { PlaybackProgress } from '../playback/playback-progress.entity';
 
@@ -15,19 +14,16 @@ export class User {
   id: string;
 
   @Column({ unique: true })
+  supabaseId: string;
+
+  @Column({ unique: true })
   email: string;
 
   @Column({ unique: true })
   username: string;
 
-  @Column()
-  passwordHash: string;
-
   @CreateDateColumn()
   createdAt: Date;
-
-  @OneToMany(() => Session, (session) => session.user)
-  sessions: Session[];
 
   @OneToMany(() => WatchpartyMember, (member) => member.user)
   watchparties: WatchpartyMember[];
