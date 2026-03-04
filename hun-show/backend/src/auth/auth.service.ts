@@ -1,4 +1,9 @@
-import { Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,51 +16,75 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
-  async sendMagicLink(email: string): Promise<{ message: string }> {
-    const { error } = await this.supabase.auth.signInWithOtp({
+  // Register: create user in Supabase Auth + save to PostgreSQL
+  async register(
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<{ message: string }> {
+    // Check if user already exists in our DB
+    const existing = await this.userRepo.findOne({ where: { email } });
+    if (existing) throw new ConflictException('Email already registered');
+
+    // Create user in Supabase Auth (sends confirmation email automatically)
+    const { data, error } = await this.supabase.auth.signUp({
       email,
+      password,
       options: {
+        data: { firstName, lastName },
         emailRedirectTo: `${process.env.FRONTEND_URL}/auth/verify`,
       },
     });
 
-    if (error) throw new UnauthorizedException(error.message);
+    if (error) throw new ConflictException(error.message);
 
-    return { message: 'Magic link sent! Check your email.' };
-  }
-
-  async verifyAndLogin(
-    token: string,
-  ): Promise<{ user: User; accessToken: string }> {
-    const { data, error } = await this.supabase.auth.verifyOtp({
-      token_hash: token,
-      type: 'magiclink',
+    // Save user in our PostgreSQL DB
+    const user = this.userRepo.create({
+      supabaseId: data.user!.id,
+      email,
+      firstName,
+      lastName,
     });
-
-    if (error || !data.user || !data.session)
-      throw new UnauthorizedException('Invalid or expired link');
-
-    const supabaseUser = data.user;
-
-    let user = await this.userRepo.findOne({
-      where: { supabaseId: supabaseUser.id },
-    });
-
-    if (!user) {
-      user = this.userRepo.create({
-        supabaseId: supabaseUser.id,
-        email: supabaseUser.email,
-        username: supabaseUser.email?.split('@')[0] ?? supabaseUser.id,
-      });
-      await this.userRepo.save(user);
-    }
+    await this.userRepo.save(user);
 
     return {
-      user,
-      accessToken: data.session.access_token,
+      message:
+        'Registration successful! Please check your email to confirm your account.',
     };
   }
 
+  // Login: verify credentials via Supabase, return access token
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ accessToken: string; user: User }> {
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw new UnauthorizedException('Invalid email or password');
+
+    if (!data.user.email_confirmed_at) {
+      throw new UnauthorizedException(
+        'Please confirm your email before logging in',
+      );
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { supabaseId: data.user.id },
+    });
+
+    if (!user) throw new UnauthorizedException('User not found');
+
+    return {
+      accessToken: data.session.access_token,
+      user,
+    };
+  }
+
+  // Get current user from access token
   async getUser(accessToken: string): Promise<User> {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
 
