@@ -1,12 +1,13 @@
 import { mockMovies } from "@/lib/mockMovies";
 import Link from "next/link";
-
+import CustomVideoPlayer from "@/components/CustomVideoPlayer";
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
-export default function WatchPage({ params }: Props) {
-  const movie = mockMovies.find((m) => m.id === params.id);
+export default async function WatchPage({ params }: Props) {
+  const { id } = await params;
+  const movie = mockMovies.find((m) => m.id === id);
 
   if (!movie) {
     return (
@@ -16,7 +17,6 @@ export default function WatchPage({ params }: Props) {
       </main>
     );
   }
-
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
       <Link href="/">← Back</Link>
@@ -26,8 +26,19 @@ export default function WatchPage({ params }: Props) {
         By {movie.creator} {movie.year ? `• ${movie.year}` : ""}
       </p>
 
-      <div style={{ marginTop: 14, borderRadius: 14, overflow: "hidden", border: "1px solid #e5e5e5" }}>
-        <video controls width="100%" src={movie.videoUrl} />
+      <div
+        style={{
+          marginTop: 14,
+          borderRadius: 14,
+          overflow: "hidden",
+          border: "1px solid #e5e5e5",
+        }}
+      >
+        <CustomVideoPlayer
+          src={movie.videoUrl}
+          poster={movie.thumbnail}
+          title={movie.title}
+        />
       </div>
 
       <section style={{ marginTop: 16 }}>
@@ -35,7 +46,13 @@ export default function WatchPage({ params }: Props) {
         <p style={{ opacity: 0.85 }}>{movie.description}</p>
 
         <div style={{ marginTop: 16 }}>
-          <button style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #ccc" }}>
+          <button
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+            }}
+          >
             ⭐ Rate (placeholder)
           </button>
         </div>

@@ -4,7 +4,7 @@ export type Movie = {
   creator: string;
   year?: number;
   thumbnail: string;
-  videoUrl: string;   
+  videoUrl: string;
   description: string;
 };
 
@@ -15,7 +15,7 @@ export const mockMovies: Movie[] = [
     creator: "Student Creator",
     year: 2026,
     thumbnail: "/thumbnails/midnight.jpg",
-    videoUrl: "/videos/sample.mp4",
+    videoUrl: "/COWS_AT_THE_GRASS.mp4",
     description: "A short student film made for a class project.",
   },
   {
