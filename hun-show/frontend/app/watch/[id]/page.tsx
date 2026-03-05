@@ -1,9 +1,18 @@
+"use client";
+
 import { mockMovies } from "@/lib/mockMovies";
 import Link from "next/link";
 import CustomVideoPlayer from "@/components/CustomVideoPlayer";
 type Props = {
   params: Promise<{ id: string }>;
 };
+
+function getYouTubeId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+  );
+  return match ? match[1] : null;
+}
 
 export default async function WatchPage({ params }: Props) {
   const { id } = await params;
@@ -19,10 +28,21 @@ export default async function WatchPage({ params }: Props) {
   }
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-      <Link href="/">← Back</Link>
+      <Link href="/" style={{ color: "var(--p)", fontWeight: 500 }}>
+        ← Back to Browse
+      </Link>
 
-      <h1 style={{ marginTop: 12 }}>{movie.title}</h1>
-      <p style={{ opacity: 0.75, marginTop: 6 }}>
+      <h1
+        style={{
+          marginTop: 12,
+          fontSize: 28,
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {movie.title}
+      </h1>
+      <p style={{ opacity: 0.75, marginTop: 6, fontSize: 14 }}>
         By {movie.creator} {movie.year ? `• ${movie.year}` : ""}
       </p>
 
@@ -41,9 +61,13 @@ export default async function WatchPage({ params }: Props) {
         />
       </div>
 
-      <section style={{ marginTop: 16 }}>
-        <h2 style={{ fontSize: 16 }}>Description</h2>
-        <p style={{ opacity: 0.85 }}>{movie.description}</p>
+      <section style={{ marginTop: 32 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Description
+        </h2>
+        <p style={{ opacity: 0.85, lineHeight: 1.6, fontSize: 15 }}>
+          {movie.description}
+        </p>
 
         <div style={{ marginTop: 16 }}>
           <button

@@ -20,11 +20,11 @@ export const mockMovies: Movie[] = [
   },
   {
     id: "2",
-    title: "Campus Life Mini-Doc",
+    title: "Campus-Mini Doc",
     creator: "Film Club",
     year: 2026,
     thumbnail: "/thumbnails/campus.jpg",
-    videoUrl: "/videos/sample.mp4",
-    description: "A mini documentary around campus life.",
+    videoUrl: "https://www.youtube.com/watch?v=AWmgfJRziHM",
+    description: "A mini documentary exploring campus life and student experiences through the lens of our community.",
   },
 ];
