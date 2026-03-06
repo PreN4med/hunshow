@@ -9,6 +9,8 @@ import { UsersModule } from './users/user.module';
 import { WatchpartyModule } from './watchparty/watchparty.module';
 import { PlaybackModule } from './playback/playback.module';
 import { AuthModule } from './auth/auth.module';
+import { VideosModule } from './videos/video.module';
+import { R2Module } from './r2/r2.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { AuthModule } from './auth/auth.module';
     WatchpartyModule,
     PlaybackModule,
     AuthModule,
+    VideosModule,
+    R2Module,
   ],
   controllers: [AppController],
   providers: [AppService],
