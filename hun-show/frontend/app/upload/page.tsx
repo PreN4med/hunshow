@@ -1,6 +1,11 @@
+"use client";
+
+import Header from "@/components/Header";
+
 export default function UploadPage() {
   return (
-    <main style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
+    <>
+      <Header />
       <h1>Upload</h1>
       <p style={{ opacity: 0.75 }}>
         MVP idea: title + description + file upload (later connects to backend storage).

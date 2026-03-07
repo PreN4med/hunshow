@@ -138,6 +138,9 @@ img{ max-width: 100%; height: auto; }
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.12s ease, filter 0.12s ease, background 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn:active{ transform: translateY(1px); }
