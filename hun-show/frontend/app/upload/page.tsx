@@ -1,10 +1,7 @@
 "use client";
 
-<<<<<<< HEAD
 import Header from "@/components/Header";
-=======
 import { useState } from "react";
->>>>>>> origin/main
 
 export default function UploadPage() {
   const [title, setTitle] = useState("");
@@ -35,6 +32,7 @@ export default function UploadPage() {
       formData.append("file", file);
       formData.append("title", title);
       formData.append("description", description);
+      formData.append("genres", ""); // Backend expects this field
       formData.append("uploadedBy", user.id);
 
       const res = await fetch("http://localhost:5000/videos/upload", {
@@ -117,6 +115,6 @@ export default function UploadPage() {
           </button>
         </div>
       )}
-    </main>
+    </>
   );
 }
