@@ -11,6 +11,8 @@ import { PlaybackModule } from './playback/playback.module';
 import { AuthModule } from './auth/auth.module';
 import { VideosModule } from './videos/video.module';
 import { R2Module } from './r2/r2.module';
+import { CommentsModule } from './comments/comments.module';
+import { RatingsModule } from './ratings/ratings.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { R2Module } from './r2/r2.module';
     AuthModule,
     VideosModule,
     R2Module,
+    CommentsModule,
+    RatingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
