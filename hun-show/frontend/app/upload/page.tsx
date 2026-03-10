@@ -1,5 +1,6 @@
 "use client";
 
+import Header from "@/components/Header";
 import { useState } from "react";
 
 export default function UploadPage() {
@@ -31,6 +32,7 @@ export default function UploadPage() {
       formData.append("file", file);
       formData.append("title", title);
       formData.append("description", description);
+      formData.append("genres", ""); // Backend expects this field
       formData.append("uploadedBy", user.id);
 
       const res = await fetch("http://localhost:5000/videos/upload", {
@@ -50,7 +52,8 @@ export default function UploadPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
+    <>
+      <Header />
       <h1>Upload</h1>
       <p style={{ opacity: 0.75 }}>Upload a video to hunshow.</p>
 
@@ -112,6 +115,6 @@ export default function UploadPage() {
           </button>
         </div>
       )}
-    </main>
+    </>
   );
 }

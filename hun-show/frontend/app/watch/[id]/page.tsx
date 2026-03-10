@@ -3,6 +3,8 @@
 import { mockMovies } from "@/lib/mockMovies";
 import Link from "next/link";
 import CustomVideoPlayer from "@/components/CustomVideoPlayer";
+import Header from "@/components/Header";
+
 type Props = {
   params: Promise<{ id: string }>;
 };
@@ -20,14 +22,19 @@ export default async function WatchPage({ params }: Props) {
 
   if (!movie) {
     return (
-      <main style={{ padding: 24 }}>
-        <p>Movie not found.</p>
-        <Link href="/">Back</Link>
-      </main>
+      <>
+        <Header />
+        <main style={{ padding: 24 }}>
+          <p>Movie not found.</p>
+          <Link href="/">Back</Link>
+        </main>
+      </>
     );
   }
   return (
-    <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+    <>
+      <Header />
+      <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
       <Link href="/" style={{ color: "var(--p)", fontWeight: 500 }}>
         ← Back to Browse
       </Link>
@@ -81,6 +88,7 @@ export default async function WatchPage({ params }: Props) {
           </button>
         </div>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

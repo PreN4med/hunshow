@@ -1,37 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { mockMovies } from "@/lib/mockMovies";
+import Header from "@/components/Header";
 
 export default function HomePage() {
   return (
     <>
-      <div className="topbar">
-        <div className="container">
-          <div className="nav">
-            <div className="brand">
-              <div className="logoBox" aria-label="Hun-Show logo">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                <path d="M9 7.5v9l8-4.5-8-4.5z" fill="white" />
-                </svg>
-              </div>
-              <div>
-                <div className="brandTitle">Hun-Show</div>
-                <div className="brandSub">Hunter-only movie sharing</div>
-              </div>
-            </div>
-
-            <div className="actions">
-              <Link className="btn btnGhost" href="/login">Login</Link>
-              <Link className="btn btnPrimary" href="/upload">Upload</Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Header page="home" />
 
       <main className="container">
         <section className="hero">
