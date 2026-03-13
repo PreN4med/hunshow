@@ -1,6 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
+  Delete,
+  Param,
   UploadedFile,
   UseInterceptors,
   Body,
@@ -13,11 +16,10 @@ import { VideosService } from './video.service';
 export class VideosController {
   constructor(private readonly videosService: VideosService) {}
 
-  // POST /videos/upload
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit for upload
+      limits: { fileSize: 500 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         const allowed = [
           'video/mp4',
@@ -37,20 +39,36 @@ export class VideosController {
     @UploadedFile() file: Express.Multer.File,
     @Body('title') title: string,
     @Body('description') description: string,
-    @Body('genres') genres: string,
     @Body('uploadedBy') uploadedBy: string,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
     if (!title) throw new BadRequestException('Title is required');
     if (!uploadedBy) throw new BadRequestException('uploadedBy is required');
 
-    const genreList = genres ? genres.split(',').map((g) => g.trim()) : [];
-
     return this.videosService.uploadVideo(file, {
       title,
       description,
-      genres: genreList,
       uploadedBy,
     });
+  }
+
+  @Get()
+  async getAllVideos() {
+    return this.videosService.findAll();
+  }
+
+  @Get(':id')
+  async getVideo(@Param('id') id: string) {
+    return this.videosService.findOne(id);
+  }
+
+  @Get(':id/url')
+  async getVideoUrl(@Param('id') id: string) {
+    return this.videosService.getSignedUrl(id);
+  }
+
+  @Delete(':id')
+  async deleteVideo(@Param('id') id: string) {
+    return this.videosService.delete(id);
   }
 }

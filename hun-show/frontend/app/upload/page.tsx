@@ -1,12 +1,12 @@
 "use client";
 
-import Header from "@/components/Header";
 import { useState } from "react";
 
 export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [thumbnail, setThumbnail] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -32,8 +32,8 @@ export default function UploadPage() {
       formData.append("file", file);
       formData.append("title", title);
       formData.append("description", description);
-      formData.append("genres", ""); // Backend expects this field
       formData.append("uploadedBy", user.id);
+      if (thumbnail) formData.append("thumbnail", thumbnail);
 
       const res = await fetch("http://localhost:5000/videos/upload", {
         method: "POST",
@@ -52,8 +52,7 @@ export default function UploadPage() {
   }
 
   return (
-    <>
-      <Header />
+    <main style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
       <h1>Upload</h1>
       <p style={{ opacity: 0.75 }}>Upload a video to hunshow.</p>
 
@@ -72,10 +71,19 @@ export default function UploadPage() {
             onChange={(e) => setDescription(e.target.value)}
             style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
           />
+          <label style={{ fontSize: 14, opacity: 0.75 }}>Video file</label>
           <input
             type="file"
             accept="video/*"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
+          />
+          <label style={{ fontSize: 14, opacity: 0.75 }}>
+            Thumbnail (optional)
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setThumbnail(e.target.files?.[0] || null)}
           />
           {error && (
             <p style={{ color: "red", fontSize: 13, margin: 0 }}>{error}</p>
@@ -95,13 +103,14 @@ export default function UploadPage() {
         </div>
       ) : (
         <div style={{ marginTop: 12 }}>
-          <p>Video uploaded successfully!</p>
+          <p>✅ Video uploaded successfully!</p>
           <button
             onClick={() => {
               setSuccess(false);
               setTitle("");
               setDescription("");
               setFile(null);
+              setThumbnail(null);
             }}
             style={{
               marginTop: 10,
@@ -115,6 +124,6 @@ export default function UploadPage() {
           </button>
         </div>
       )}
-    </>
+    </main>
   );
 }

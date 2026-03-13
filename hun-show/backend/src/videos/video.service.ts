@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Video, VideoDocument } from './video.schema';
@@ -16,18 +16,14 @@ export class VideosService {
     metadata: {
       title: string;
       description?: string;
-      genres?: string[];
       uploadedBy: string;
     },
   ): Promise<VideoDocument> {
-    // Upload file to R2
     const videoUrl = await this.r2Service.uploadFile(file, 'videos');
 
-    // Save metadata to MongoDB
     const video = new this.videoModel({
       title: metadata.title,
       description: metadata.description,
-      genres: metadata.genres,
       uploadedBy: metadata.uploadedBy,
       videoUrl,
       duration: 0,
@@ -40,15 +36,23 @@ export class VideosService {
     return this.videoModel.find().exec();
   }
 
-  async findOne(id: string): Promise<VideoDocument | null> {
-    return this.videoModel.findById(id).exec();
+  async findOne(id: string): Promise<VideoDocument> {
+    const video = await this.videoModel.findById(id).exec();
+    if (!video) throw new NotFoundException('Video not found');
+    return video;
   }
 
-  async delete(id: string): Promise<void> {
+  async getSignedUrl(id: string): Promise<{ url: string }> {
+    const video = await this.findOne(id);
+    const url = await this.r2Service.getSignedUrl(video.videoUrl);
+    return { url };
+  }
+
+  async delete(id: string): Promise<{ message: string }> {
     const video = await this.videoModel.findById(id);
-    if (video) {
-      await this.r2Service.deleteFile(video.videoUrl);
-      await this.videoModel.findByIdAndDelete(id);
-    }
+    if (!video) throw new NotFoundException('Video not found');
+    await this.r2Service.deleteFile(video.videoUrl);
+    await this.videoModel.findByIdAndDelete(id);
+    return { message: 'Video deleted successfully' };
   }
 }
