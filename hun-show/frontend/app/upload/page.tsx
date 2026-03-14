@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function UploadPage() {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -124,6 +126,21 @@ export default function UploadPage() {
           </button>
         </div>
       )}
+
+      <button
+        onClick={() => router.push("/")}
+        style={{
+          marginTop: 24,
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #ccc",
+          cursor: "pointer",
+          background: "white",
+          width: "100%",
+        }}
+      >
+        Back
+      </button>
     </main>
   );
 }
