@@ -3,12 +3,16 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Video, VideoDocument } from './video.schema';
 import { R2Service } from '../r2/r2.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
 
 @Injectable()
 export class VideosService {
   constructor(
     @InjectModel(Video.name) private videoModel: Model<VideoDocument>,
     private readonly r2Service: R2Service,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
   async uploadVideo(
@@ -32,8 +36,26 @@ export class VideosService {
     return video.save();
   }
 
-  async findAll(): Promise<VideoDocument[]> {
-    return this.videoModel.find().exec();
+  async findAll() {
+    const videos = await this.videoModel.find().exec();
+
+    return Promise.all(
+      videos.map(async (v) => {
+        const user = await this.userRepo.findOne({
+          where: { id: v.uploadedBy },
+        });
+        return {
+          _id: v._id,
+          title: v.title,
+          description: v.description,
+          videoUrl: v.videoUrl,
+          uploadedBy: v.uploadedBy,
+          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          createdAt: (v as any).createdAt,
+          duration: v.duration,
+        };
+      }),
+    );
   }
 
   async findOne(id: string): Promise<VideoDocument> {
