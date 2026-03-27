@@ -25,6 +25,12 @@ export class Video {
 
   @Prop({ default: 0 })
   duration: number;
+
+  @Prop()
+  createdAt: Date;
+
+  @Prop()
+  updatedAt: Date;
 }
 
 export const VideoSchema = SchemaFactory.createForClass(Video);

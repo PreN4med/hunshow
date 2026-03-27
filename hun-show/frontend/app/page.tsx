@@ -12,6 +12,7 @@ type VideoFromDB = {
   description: string;
   videoUrl: string;
   uploadedBy: string;
+  creatorName: string;
   createdAt: string;
 };
 
@@ -19,8 +20,8 @@ function dbVideoToMovie(v: VideoFromDB): Movie {
   return {
     id: v._id,
     title: v.title,
-    creator: v.uploadedBy,
-    year: new Date(v.createdAt).getFullYear(),
+    creator: v.creatorName,
+    year: new Date(v.createdAt),
     thumbnail: "/thumbnails/default.jpg",
     videoUrl: v.videoUrl,
     description: v.description || "",
