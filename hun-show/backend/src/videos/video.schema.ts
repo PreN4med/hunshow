@@ -15,6 +15,9 @@ export class Video {
   genres: string[];
 
   @Prop()
+  thumbnailUrl: string;
+
+  @Prop()
   videoUrl: string;
 
   @Prop([{ language: String, url: String }])
