@@ -14,18 +14,17 @@ type VideoFromDB = {
   uploadedBy: string;
   creatorName: string;
   createdAt: string;
+  thumbnailUrl?: string;
 };
 
-function dbVideoToMovie(v: VideoFromDB): Movie {
-  return {
-    id: v._id,
-    title: v.title,
-    creator: v.creatorName,
-    year: new Date(v.createdAt),
-    thumbnail: "/thumbnails/default.jpg",
-    videoUrl: v.videoUrl,
-    description: v.description || "",
-  };
+async function fetchThumbnailUrl(id: string): Promise<string> {
+  try {
+    const res = await fetch(`http://localhost:5000/videos/${id}/thumbnail`);
+    const data = await res.json();
+    return data.url || "/thumbnails/default.jpg";
+  } catch {
+    return "/thumbnails/default.jpg";
+  }
 }
 
 export default function HomePage() {
@@ -36,7 +35,22 @@ export default function HomePage() {
       try {
         const res = await fetch("http://localhost:5000/videos");
         const data: VideoFromDB[] = await res.json();
-        setDbMovies(data.map(dbVideoToMovie));
+
+        const movies = await Promise.all(
+          data.map(async (v) => ({
+            id: v._id,
+            title: v.title,
+            creator: v.creatorName,
+            year: new Date(v.createdAt).getFullYear(),
+            thumbnail: v.thumbnailUrl
+              ? await fetchThumbnailUrl(v._id)
+              : "/thumbnails/default.jpg",
+            videoUrl: v.videoUrl,
+            description: v.description || "",
+          })),
+        );
+
+        setDbMovies(movies);
       } catch (err) {
         console.error("Failed to fetch videos:", err);
       }
@@ -85,7 +99,7 @@ export default function HomePage() {
             <Link key={m.id} href={`/watch/${m.id}`} className="card">
               <div className="thumb" style={{ position: "relative" }}>
                 <Image
-                  src={m.thumbnail}
+                  src={m.thumbnail || "/thumbnails/default.jpg"}
                   alt={m.title}
                   fill
                   style={{ objectFit: "cover" }}
