@@ -39,13 +39,23 @@ export default function WatchPage() {
         const urlRes = await fetch(`http://localhost:5000/videos/${id}/url`);
         const urlData = await urlRes.json();
 
+        // Get signed URL for the thumbnail from R2
+        let thumbnailUrl = "/thumbnails/default.jpg";
+        if (data.thumbnailUrl) {
+          const thumbRes = await fetch(
+            `http://localhost:5000/videos/${id}/thumbnail`,
+          );
+          const thumbData = await thumbRes.json();
+          if (thumbData.url) thumbnailUrl = thumbData.url;
+        }
+
         setMovie({
           id: data._id,
           title: data.title,
           description: data.description || "",
           creator: data.uploadedBy,
           year: new Date(data.createdAt).getFullYear(),
-          thumbnail: "/thumbnails/default.jpg",
+          thumbnail: thumbnailUrl,
           videoUrl: urlData.url,
         });
       } catch (err) {
