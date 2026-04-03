@@ -13,6 +13,7 @@ import { VideosModule } from './videos/video.module';
 import { R2Module } from './r2/r2.module';
 import { CommentsModule } from './comments/comments.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { StreamModule } from './stream/stream.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { RatingsModule } from './ratings/ratings.module';
     R2Module,
     CommentsModule,
     RatingsModule,
+    StreamModule,
   ],
   controllers: [AppController],
   providers: [AppService],
