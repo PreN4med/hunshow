@@ -13,10 +13,12 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-video-js-player": "^1.1.1"
+    "react-video-js-player": "^1.1.1",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/hls.js": "^0.13.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
