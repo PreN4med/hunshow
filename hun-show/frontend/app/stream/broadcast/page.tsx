@@ -9,6 +9,7 @@ export default function BroadcastPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -16,7 +17,6 @@ export default function BroadcastPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Connect to WebSocket
     socketRef.current = io("http://localhost:5000/stream");
 
     socketRef.current.on("viewer-count", ({ count }: { count: number }) => {
@@ -27,13 +27,13 @@ export default function BroadcastPage() {
       setError("Failed to connect to stream server");
     });
 
-    // Get camera/mic access
     async function setupCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
         });
+        streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -48,10 +48,7 @@ export default function BroadcastPage() {
 
     return () => {
       socketRef.current?.disconnect();
-      if (videoRef.current?.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((t) => t.stop());
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -68,7 +65,6 @@ export default function BroadcastPage() {
     }
 
     try {
-      // Create stream on backend
       const res = await fetch("http://localhost:5000/stream/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,11 +74,9 @@ export default function BroadcastPage() {
       const data = await res.json();
       setStreamId(data.streamId);
 
-      // Join stream room via WebSocket
       socketRef.current?.emit("join-stream", { streamId: data.streamId });
 
-      // Start recording and sending to backend
-      const stream = videoRef.current?.srcObject as MediaStream;
+      const stream = streamRef.current!;
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: "video/webm;codecs=vp9,opus",
       });
@@ -90,16 +84,20 @@ export default function BroadcastPage() {
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = async (event) => {
+        console.log("Chunk generated, size:", event.data.size);
         if (event.data.size > 0) {
-          const buffer = await event.data.arrayBuffer();
-          socketRef.current?.emit("stream-chunk", {
-            streamId: data.streamId,
-            chunk: buffer,
-          });
+          const formData = new FormData();
+          formData.append("chunk", event.data, "chunk.webm");
+          formData.append("streamId", data.streamId);
+
+          await fetch("http://localhost:5000/stream/chunk", {
+            method: "POST",
+            body: formData,
+          }).catch(console.error);
         }
       };
 
-      mediaRecorder.start(2000); // Send chunks every 2 seconds
+      mediaRecorder.start(2000);
       setStreaming(true);
       setError("");
     } catch (err) {
@@ -119,40 +117,9 @@ export default function BroadcastPage() {
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
       <h1>Go Live</h1>
 
-      {!streaming ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-          <input
-            placeholder="Stream title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-          />
-          {error && <p style={{ color: "red", fontSize: 13 }}>{error}</p>}
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{ width: "100%", borderRadius: 10, background: "#000" }}
-          />
-          <button
-            onClick={handleGoLive}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              background: "red",
-              color: "white",
-              fontWeight: 600,
-              fontSize: 16,
-              cursor: "pointer",
-            }}
-          >
-            Go Live
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+      {/* Always render video element so srcObject is never lost */}
+      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        {streaming && (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span
               style={{
@@ -170,18 +137,52 @@ export default function BroadcastPage() {
               {viewerCount} viewers
             </span>
           </div>
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{ width: "100%", borderRadius: 10, background: "#000" }}
+        )}
+
+        {!streaming && (
+          <input
+            placeholder="Stream title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
           />
+        )}
+
+        {error && <p style={{ color: "red", fontSize: 13 }}>{error}</p>}
+
+        {/* Single video element — always mounted */}
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          style={{ width: "100%", borderRadius: 10, background: "#000" }}
+        />
+
+        {streaming && streamId && (
           <p style={{ fontSize: 13, opacity: 0.6 }}>
             Share this link with viewers:{" "}
             <strong>localhost:3000/stream/watch/{streamId}</strong>
           </p>
-          {error && <p style={{ color: "red", fontSize: 13 }}>{error}</p>}
+        )}
+
+        {!streaming ? (
+          <button
+            onClick={handleGoLive}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: "none",
+              background: "red",
+              color: "white",
+              fontWeight: 600,
+              fontSize: 16,
+              cursor: "pointer",
+            }}
+          >
+            Go Live
+          </button>
+        ) : (
           <button
             onClick={handleEndStream}
             style={{
@@ -193,8 +194,8 @@ export default function BroadcastPage() {
           >
             End Stream
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

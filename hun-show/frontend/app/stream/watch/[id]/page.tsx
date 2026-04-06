@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import Link from "next/link";
+import Hls from "hls.js";
 
 type ChatMessage = {
   id: string;
@@ -16,32 +17,28 @@ export default function WatchStreamPage() {
   const params = useParams();
   const streamId = params.id as string;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const mediaSourceRef = useRef<MediaSource | null>(null);
-  const sourceBufferRef = useRef<SourceBuffer | null>(null);
-  const chunkQueueRef = useRef<ArrayBuffer[]>([]);
   const [streamInfo, setStreamInfo] = useState<any>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [viewerCount, setViewerCount] = useState(0);
   const [streamEnded, setStreamEnded] = useState(false);
   const [username, setUsername] = useState("");
+  const [playlistReady, setPlaylistReady] = useState(false);
 
   useEffect(() => {
-    // Get username from localStorage
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     setUsername(
       user.firstName ? `${user.firstName} ${user.lastName}` : "Anonymous",
     );
 
-    // Fetch stream info
     async function fetchStreamInfo() {
       try {
         const res = await fetch(`http://localhost:5000/stream/${streamId}`);
         const data = await res.json();
         setStreamInfo(data);
 
-        // Load chat history
         const chatRes = await fetch(
           `http://localhost:5000/stream/${streamId}/chat`,
         );
@@ -54,28 +51,42 @@ export default function WatchStreamPage() {
 
     fetchStreamInfo();
 
-    // Set up MediaSource for video playback
-    const mediaSource = new MediaSource();
-    mediaSourceRef.current = mediaSource;
+    // Poll for playlist URL every 3 seconds until it's ready
+    const playlistPoller = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `http://localhost:5000/stream/${streamId}/playlist`,
+        );
+        const data = await res.json();
 
-    if (videoRef.current) {
-      videoRef.current.src = URL.createObjectURL(mediaSource);
-    }
+        if (data.url && videoRef.current && !hlsRef.current) {
+          clearInterval(playlistPoller);
+          setPlaylistReady(true);
 
-    mediaSource.addEventListener("sourceopen", () => {
-      const sourceBuffer = mediaSource.addSourceBuffer(
-        "video/webm;codecs=vp9,opus",
-      );
-      sourceBufferRef.current = sourceBuffer;
-
-      sourceBuffer.addEventListener("updateend", () => {
-        if (chunkQueueRef.current.length > 0 && !sourceBuffer.updating) {
-          sourceBuffer.appendBuffer(chunkQueueRef.current.shift()!);
+          if (Hls.isSupported()) {
+            const hls = new Hls({
+              liveSyncDurationCount: 3,
+              liveMaxLatencyDurationCount: 10,
+            });
+            hlsRef.current = hls;
+            hls.loadSource(data.url);
+            hls.attachMedia(videoRef.current);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              videoRef.current?.play().catch(() => {});
+            });
+          } else if (
+            videoRef.current.canPlayType("application/vnd.apple.mpegurl")
+          ) {
+            videoRef.current.src = data.url;
+            videoRef.current.play().catch(() => {});
+          }
         }
-      });
-    });
+      } catch (err) {
+        console.error("Playlist not ready yet:", err);
+      }
+    }, 3000);
 
-    // Connect to WebSocket
+    // WebSocket for chat and viewer count
     socketRef.current = io("http://localhost:5000/stream");
 
     socketRef.current.on("connect", () => {
@@ -90,34 +101,27 @@ export default function WatchStreamPage() {
       setMessages((prev) => [...prev, message]);
     });
 
-    socketRef.current.on("stream-chunk", (chunk: ArrayBuffer) => {
-      if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-        sourceBufferRef.current.appendBuffer(chunk);
-      } else {
-        chunkQueueRef.current.push(chunk);
-      }
-      videoRef.current?.play().catch(() => {});
-    });
-
     socketRef.current.on("stream-ended", () => {
       setStreamEnded(true);
+      hlsRef.current?.destroy();
+      clearInterval(playlistPoller);
     });
 
     return () => {
+      clearInterval(playlistPoller);
       socketRef.current?.emit("leave-stream", { streamId });
       socketRef.current?.disconnect();
+      hlsRef.current?.destroy();
     };
   }, [streamId]);
 
   function handleSendMessage() {
     if (!newMessage.trim()) return;
-
     socketRef.current?.emit("chat-message", {
       streamId,
       message: newMessage,
       username,
     });
-
     setNewMessage("");
   }
 
@@ -135,7 +139,6 @@ export default function WatchStreamPage() {
           marginTop: 16,
         }}
       >
-        {/* Video Player */}
         <div>
           <div
             style={{
@@ -159,7 +162,7 @@ export default function WatchStreamPage() {
                   fontSize: 13,
                 }}
               >
-                LIVE
+                ● LIVE
               </span>
             )}
           </div>
@@ -179,13 +182,34 @@ export default function WatchStreamPage() {
               </Link>
             </div>
           ) : (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              controls
-              style={{ width: "100%", borderRadius: 10, background: "#000" }}
-            />
+            <>
+              {!playlistReady && (
+                <div
+                  style={{
+                    background: "#000",
+                    borderRadius: 10,
+                    padding: 40,
+                    textAlign: "center",
+                    color: "white",
+                    marginBottom: 8,
+                  }}
+                >
+                  <p>Waiting for stream to start...</p>
+                </div>
+              )}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                controls
+                style={{
+                  width: "100%",
+                  borderRadius: 10,
+                  background: "#000",
+                  display: playlistReady ? "block" : "none",
+                }}
+              />
+            </>
           )}
 
           <p style={{ opacity: 0.6, fontSize: 13, marginTop: 8 }}>
@@ -215,7 +239,6 @@ export default function WatchStreamPage() {
             Live Chat
           </div>
 
-          {/* Messages */}
           <div
             style={{
               flex: 1,
@@ -248,7 +271,6 @@ export default function WatchStreamPage() {
             ))}
           </div>
 
-          {/* Input */}
           <div
             style={{
               padding: 12,
