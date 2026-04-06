@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -12,7 +13,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 export class R2Service {
   private client: S3Client;
   private bucket: string;
-  private readonly MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB limit on upload
+  private readonly MAX_FILE_SIZE = 500 * 1024 * 1024;
 
   constructor(private config: ConfigService) {
     this.bucket = this.config.get<string>('R2_BUCKET')!;
@@ -26,7 +27,6 @@ export class R2Service {
     });
   }
 
-  // Upload a file to R2
   async uploadFile(
     file: Express.Multer.File,
     folder: string = 'videos',
@@ -34,9 +34,7 @@ export class R2Service {
     if (file.size > this.MAX_FILE_SIZE) {
       throw new Error(`File too large. Maximum size is 500MB`);
     }
-
     const key = `${folder}/${Date.now()}-${file.originalname}`;
-
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -45,21 +43,17 @@ export class R2Service {
         ContentType: file.mimetype,
       }),
     );
-
     return key;
   }
 
-  // Get a temporary signed URL to access a file (expires in 1 hour)
   async getSignedUrl(key: string): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
     });
-
     return getSignedUrl(this.client, command, { expiresIn: 3600 });
   }
 
-  // Delete a file from R2
   async deleteFile(key: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
@@ -67,5 +61,30 @@ export class R2Service {
         Key: key,
       }),
     );
+  }
+
+  async uploadBuffer(
+    buffer: Buffer,
+    key: string,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  async listFiles(prefix: string): Promise<string[]> {
+    const response = await this.client.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: prefix,
+      }),
+    );
+    return (response.Contents || []).map((obj) => obj.Key!);
   }
 }

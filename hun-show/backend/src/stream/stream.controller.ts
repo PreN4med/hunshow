@@ -1,3 +1,4 @@
+/// <reference types="multer" />
 import {
   Controller,
   Post,
@@ -8,15 +9,14 @@ import {
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { StreamService } from './stream.service';
 import { v4 as uuidv4 } from 'uuid';
-import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('stream')
 export class StreamController {
   constructor(private readonly streamService: StreamService) {}
 
-  // POST /stream/start
   @Post('start')
   async startStream(
     @Body('userId') userId: string,
@@ -29,24 +29,6 @@ export class StreamController {
     return { streamId };
   }
 
-  // GET /stream/active
-  @Get('active')
-  async getActiveStreams() {
-    return this.streamService.getActiveStreams();
-  }
-
-  // GET /stream/:id
-  @Get(':id')
-  async getStream(@Param('id') id: string) {
-    return this.streamService.getStream(id);
-  }
-
-  // GET /stream/:id/chat
-  @Get(':id/chat')
-  async getChatHistory(@Param('id') id: string) {
-    return this.streamService.getChatHistory(id);
-  }
-
   @Post('chunk')
   @UseInterceptors(FileInterceptor('chunk'))
   async receiveChunk(
@@ -55,7 +37,28 @@ export class StreamController {
   ) {
     if (!chunk || !streamId)
       throw new BadRequestException('chunk and streamId are required');
-    await this.streamService.processChunk(streamId, chunk);
+    await this.streamService.processChunk(streamId, chunk.buffer);
     return { success: true };
+  }
+
+  @Get('active')
+  async getActiveStreams() {
+    return this.streamService.getActiveStreams();
+  }
+
+  @Get(':id')
+  async getStream(@Param('id') id: string) {
+    return this.streamService.getStream(id);
+  }
+
+  @Get(':id/playlist')
+  async getPlaylistUrl(@Param('id') id: string) {
+    const url = await this.streamService.getPlaylistUrl(id);
+    return { url };
+  }
+
+  @Get(':id/chat')
+  async getChatHistory(@Param('id') id: string) {
+    return this.streamService.getChatHistory(id);
   }
 }
