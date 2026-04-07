@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function UploadPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -37,7 +39,7 @@ export default function UploadPage() {
       formData.append("uploadedBy", user.id);
       if (thumbnail) formData.append("thumbnail", thumbnail);
 
-      const res = await fetch("http://localhost:5000/videos/upload", {
+      const res = await fetch(`${API_URL}/videos/upload`, {
         method: "POST",
         body: formData,
       });
