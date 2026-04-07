@@ -13,6 +13,8 @@ type ChatMessage = {
   timestamp: string;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function WatchStreamPage() {
   const params = useParams();
   const streamId = params.id as string;
@@ -35,13 +37,11 @@ export default function WatchStreamPage() {
 
     async function fetchStreamInfo() {
       try {
-        const res = await fetch(`http://localhost:5000/stream/${streamId}`);
+        const res = await fetch(`${API_URL}/stream/${streamId}`);
         const data = await res.json();
         setStreamInfo(data);
 
-        const chatRes = await fetch(
-          `http://localhost:5000/stream/${streamId}/chat`,
-        );
+        const chatRes = await fetch(`${API_URL}/stream/${streamId}/chat`);
         const chatData = await chatRes.json();
         setMessages(chatData);
       } catch (err) {
@@ -54,9 +54,7 @@ export default function WatchStreamPage() {
     // Poll for playlist URL every 3 seconds until it's ready
     const playlistPoller = setInterval(async () => {
       try {
-        const res = await fetch(
-          `http://localhost:5000/stream/${streamId}/playlist`,
-        );
+        const res = await fetch(`${API_URL}/stream/${streamId}/playlist`);
         const data = await res.json();
 
         if (data.url && videoRef.current && !hlsRef.current) {
@@ -87,7 +85,7 @@ export default function WatchStreamPage() {
     }, 3000);
 
     // WebSocket for chat and viewer count
-    socketRef.current = io("http://localhost:5000/stream");
+    socketRef.current = io(`${API_URL}/stream`);
 
     socketRef.current.on("connect", () => {
       socketRef.current?.emit("join-stream", { streamId });
