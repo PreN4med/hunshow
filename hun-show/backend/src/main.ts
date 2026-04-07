@@ -7,12 +7,13 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:3000',
-      'https://fall-capstone-499-group-7.vercel.app/',
+      'https://fall-capstone-499-group-7.vercel.app',
     ],
     credentials: true,
   });
 
-  await app.listen(5000, '0.0.0.0');
-  console.log('Backend running on http://localhost:5000');
+  const port = process.env.PORT || 5000;
+  await app.listen(port, '0.0.0.0');
+  console.log(`Backend running on ${port}`);
 }
 bootstrap();
