@@ -11,6 +11,8 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function WatchPage() {
   const params = useParams();
   const id = params.id as string;
@@ -31,20 +33,18 @@ export default function WatchPage() {
       // Otherwise fetch from backend
       try {
         // Get video metadata from MongoDB
-        const res = await fetch(`http://localhost:5000/videos/${id}`);
+        const res = await fetch(`${API_URL}/videos/${id}`);
         if (!res.ok) throw new Error("Not found");
         const data = await res.json();
 
         // Get signed URL for the video from R2
-        const urlRes = await fetch(`http://localhost:5000/videos/${id}/url`);
+        const urlRes = await fetch(`${API_URL}/videos/${id}/url`);
         const urlData = await urlRes.json();
 
         // Get signed URL for the thumbnail from R2
         let thumbnailUrl = "/thumbnails/default.jpg";
         if (data.thumbnailUrl) {
-          const thumbRes = await fetch(
-            `http://localhost:5000/videos/${id}/thumbnail`,
-          );
+          const thumbRes = await fetch(`${API_URL}/videos/${id}/thumbnail`);
           const thumbData = await thumbRes.json();
           if (thumbData.url) thumbnailUrl = thumbData.url;
         }
