@@ -17,9 +17,11 @@ type VideoFromDB = {
   thumbnailUrl?: string;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 async function fetchThumbnailUrl(id: string): Promise<string> {
   try {
-    const res = await fetch(`http://localhost:5000/videos/${id}/thumbnail`);
+    const res = await fetch(`${API_URL}/videos/${id}/thumbnail`);
     const data = await res.json();
     return data.url || "/thumbnails/default.jpg";
   } catch {
@@ -33,7 +35,7 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchVideos() {
       try {
-        const res = await fetch("http://localhost:5000/videos");
+        const res = await fetch(`${API_URL}/videos`);
         const data: VideoFromDB[] = await res.json();
 
         const movies = await Promise.all(
