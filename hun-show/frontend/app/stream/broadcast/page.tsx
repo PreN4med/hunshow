@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function BroadcastPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -17,7 +19,7 @@ export default function BroadcastPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    socketRef.current = io("http://localhost:5000/stream");
+    socketRef.current = io(`${API_URL}/stream`);
 
     socketRef.current.on("viewer-count", ({ count }: { count: number }) => {
       setViewerCount(count);
@@ -65,7 +67,7 @@ export default function BroadcastPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/stream/start", {
+      const res = await fetch(`${API_URL}/stream/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, title }),
@@ -90,7 +92,7 @@ export default function BroadcastPage() {
           formData.append("chunk", event.data, "chunk.webm");
           formData.append("streamId", data.streamId);
 
-          await fetch("http://localhost:5000/stream/chunk", {
+          await fetch(`${API_URL}/stream/chunk`, {
             method: "POST",
             body: formData,
           }).catch(console.error);
