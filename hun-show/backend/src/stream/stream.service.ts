@@ -68,6 +68,16 @@ export class StreamService {
     tmpDir: string,
     inputFile: string,
   ): Promise<void> {
+    if (!fs.existsSync(inputFile)) {
+      console.error('FFmpeg error: Input file not found at', inputFile);
+      return;
+    }
+
+    const stats = fs.statSync(inputFile);
+    if (stats.size === 0) {
+      console.error('FFmpeg error: Input file is empty');
+      return;
+    }
     // Kill any existing FFmpeg process for this specific stream before starting a new one
     const existingProcess = this.activeProcesses.get(streamId);
     if (existingProcess) {
@@ -84,14 +94,15 @@ export class StreamService {
 
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg(inputFile)
+        .inputOptions(['-re', '-fflags +genpts', '-loglevel error'])
         .outputOptions([
           '-c:v libx264',
           '-preset ultrafast',
           '-tune zerolatency',
+          '-pix_fmt yuv420p',
           '-crf 28',
-          '-maxrate 1M',
-          '-bufsize 2M',
           '-c:a aac',
+          '-ar 44100',
           '-hls_time 4',
           '-hls_list_size 5',
           '-hls_flags append_list+delete_segments',
