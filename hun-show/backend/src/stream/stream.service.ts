@@ -57,8 +57,8 @@ export class StreamService {
       (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0',
     );
 
-    // Process every 3 chunks to keep individual jobs smaller for limited RAM
-    if (chunkCount % 3 === 0) {
+    // Process every 6 chunks
+    if (chunkCount % 6 === 0) {
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
     }
   }
@@ -79,6 +79,10 @@ export class StreamService {
 
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputFile)
+        .on('start', (command) =>
+          console.log('FFmpeg spawned with command: ' + command),
+        )
+        .on('stderr', (line) => console.log('FFmpeg output: ' + line))
         .outputOptions([
           '-c:v libx264',
           '-preset ultrafast',

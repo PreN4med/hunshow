@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { StreamService } from './stream.service';
@@ -41,8 +42,17 @@ export class StreamController {
   ) {
     if (!chunk || !streamId)
       throw new BadRequestException('chunk and streamId are required');
-    await this.streamService.processChunk(streamId, chunk.buffer);
-    return { success: true };
+
+    try {
+      await this.streamService.processChunk(streamId, chunk.buffer);
+      return { success: true };
+    } catch (error) {
+      console.error(
+        `[StreamController] Error processing chunk for ${streamId}:`,
+        error,
+      );
+      throw new InternalServerErrorException('Failed to process video chunk');
+    }
   }
 
   @Get('active')
@@ -74,7 +84,12 @@ export class StreamController {
     const segments = await this.streamService.getPlaylistSegments(streamId);
 
     if (!segments || segments.length === 0) {
-      return res.status(404).send('Stream not ready');
+      return res.status(404).send('Stream segments not found in Redis yet');
+    }
+
+    if (!publicUrl) {
+      console.error('R2_PUBLIC_URL is not defined in environment variables');
+      return res.status(500).send('Server configuration error');
     }
 
     const manifest = [
@@ -86,8 +101,10 @@ export class StreamController {
 
     segments.forEach((seg) => {
       manifest.push('#EXTINF:4.0,');
-      // IMPORTANT: Use your actual R2 Public URL here
-      manifest.push(`${publicUrl}/streams/${streamId}/${seg}`);
+      const baseUrl = publicUrl.endsWith('/')
+        ? publicUrl.slice(0, -1)
+        : publicUrl;
+      manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
 
     res.set('Content-Type', 'application/vnd.apple.mpegurl');
