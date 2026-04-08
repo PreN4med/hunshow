@@ -11,7 +11,13 @@ import { Server, Socket } from 'socket.io';
 import { StreamService } from './stream.service';
 
 @WebSocketGateway({
-  cors: { origin: 'http://localhost:3000', credentials: true },
+  cors: {
+    origin: [
+      'http://localhost:3000',
+      'https://fall-capstone-499-group-7.vercel.app',
+    ],
+    credentials: true,
+  },
   namespace: '/stream',
 })
 export class StreamGateway implements OnGatewayConnection, OnGatewayDisconnect {
