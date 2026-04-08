@@ -104,8 +104,8 @@ export class StreamService {
           '-c:a aac',
           '-ar 44100',
           '-hls_time 4',
-          '-hls_list_size 5',
-          '-hls_flags append_list+delete_segments',
+          '-hls_list_size 10',
+          '-hls_flags append_list',
           `-hls_segment_filename ${segmentPattern}`,
         ])
         .output(playlistFile)
