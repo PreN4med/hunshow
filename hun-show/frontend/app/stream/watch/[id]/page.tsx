@@ -85,7 +85,7 @@ export default function WatchStreamPage() {
     }, 3000);
 
     // WebSocket for chat and viewer count
-    socketRef.current = io(API_URL, {
+    socketRef.current = io(`${API_URL}/stream`, {
       path: "/socket.io/",
       transports: ["websocket"],
       secure: true,
