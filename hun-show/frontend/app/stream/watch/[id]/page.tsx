@@ -85,7 +85,11 @@ export default function WatchStreamPage() {
     }, 3000);
 
     // WebSocket for chat and viewer count
-    socketRef.current = io(`${API_URL}/stream`);
+    socketRef.current = io(API_URL, {
+      path: "/socket.io/",
+      transports: ["websocket"],
+      secure: true,
+    });
 
     socketRef.current.on("connect", () => {
       socketRef.current?.emit("join-stream", { streamId });
