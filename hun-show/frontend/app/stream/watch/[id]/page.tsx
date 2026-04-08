@@ -54,10 +54,11 @@ export default function WatchStreamPage() {
     // Poll for playlist URL every 3 seconds until it's ready
     const playlistPoller = setInterval(async () => {
       try {
-        const res = await fetch(`${API_URL}/stream/${streamId}/playlist`);
-        const data = await res.json();
+        const playlistUrl = `${API_URL}/stream/${streamId}/playlist.m3u8`;
 
-        if (data.url && videoRef.current && !hlsRef.current) {
+        const res = await fetch(playlistUrl, { method: "HEAD" });
+
+        if (res.ok && videoRef.current && !hlsRef.current) {
           clearInterval(playlistPoller);
           setPlaylistReady(true);
 
@@ -67,7 +68,7 @@ export default function WatchStreamPage() {
               liveMaxLatencyDurationCount: 10,
             });
             hlsRef.current = hls;
-            hls.loadSource(data.url);
+            hls.loadSource(playlistUrl);
             hls.attachMedia(videoRef.current);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
               videoRef.current?.play().catch(() => {});
@@ -75,7 +76,7 @@ export default function WatchStreamPage() {
           } else if (
             videoRef.current.canPlayType("application/vnd.apple.mpegurl")
           ) {
-            videoRef.current.src = data.url;
+            videoRef.current.src = playlistUrl;
             videoRef.current.play().catch(() => {});
           }
         }

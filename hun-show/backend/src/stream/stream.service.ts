@@ -68,67 +68,48 @@ export class StreamService {
     tmpDir: string,
     inputFile: string,
   ): Promise<void> {
-    if (!fs.existsSync(inputFile)) {
-      console.error('FFmpeg error: Input file not found at', inputFile);
+    const chunkCountStr =
+      (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0';
+    const segmentName = `seg-${chunkCountStr}.ts`;
+    const outputPath = path.join(tmpDir, segmentName);
+
+    if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) {
       return;
     }
-
-    const stats = fs.statSync(inputFile);
-    if (stats.size === 0) {
-      console.error('FFmpeg error: Input file is empty');
-      return;
-    }
-    // Kill any existing FFmpeg process for this specific stream before starting a new one
-    const existingProcess = this.activeProcesses.get(streamId);
-    if (existingProcess) {
-      try {
-        existingProcess.kill('SIGKILL');
-      } catch {
-        // Process might already be finished
-      }
-      this.activeProcesses.delete(streamId);
-    }
-
-    const segmentPattern = path.join(tmpDir, 'segment%03d.ts');
-    const playlistFile = path.join(tmpDir, 'playlist.m3u8');
 
     await new Promise<void>((resolve, reject) => {
-      const command = ffmpeg(inputFile)
-        .inputOptions(['-re', '-fflags +genpts', '-loglevel error'])
+      ffmpeg(inputFile)
         .outputOptions([
           '-c:v libx264',
           '-preset ultrafast',
           '-tune zerolatency',
           '-pix_fmt yuv420p',
-          '-crf 28',
-          '-c:a aac',
-          '-ar 44100',
-          '-hls_time 4',
-          '-hls_list_size 10',
-          '-hls_flags append_list',
-          `-hls_segment_filename ${segmentPattern}`,
+          '-f mpegts',
         ])
-        .output(playlistFile)
-        .on('start', () => {
-          this.activeProcesses.set(streamId, command);
-        })
+        .output(outputPath)
         .on('end', () => {
-          this.activeProcesses.delete(streamId);
           resolve();
         })
-        .on('error', (err: Error) => {
-          this.activeProcesses.delete(streamId);
-          if (!err.message.includes('SIGKILL')) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-
-      command.run();
+        .on('error', (err) => {
+          reject(err);
+        })
+        .run();
     });
 
-    await this.uploadHLSToR2(streamId, tmpDir);
+    const buffer = fs.readFileSync(outputPath);
+    await this.r2.uploadBuffer(
+      buffer,
+      `streams/${streamId}/${segmentName}`,
+      'video/mp2t',
+    );
+
+    await this.redis.rpush(`playlist:${streamId}`, segmentName);
+
+    fs.writeFileSync(inputFile, '');
+
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
   }
 
   private async uploadHLSToR2(streamId: string, tmpDir: string): Promise<void> {
@@ -147,6 +128,10 @@ export class StreamService {
         await this.r2.uploadBuffer(buffer, key, mimetype);
       }
     }
+  }
+
+  async getPlaylistSegments(streamId: string): Promise<string[]> {
+    return this.redis.lrange(`playlist:${streamId}`, 0, -1);
   }
 
   async getPlaylistUrl(streamId: string): Promise<string> {
