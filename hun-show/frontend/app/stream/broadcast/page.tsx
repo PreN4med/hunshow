@@ -164,7 +164,7 @@ export default function BroadcastPage() {
         {streaming && streamId && (
           <p style={{ fontSize: 13, opacity: 0.6 }}>
             Share this link with viewers:{" "}
-            <strong>localhost:3000/stream/watch/{streamId}</strong>
+            <strong>https://fall-capstone-499-group-7.vercel.app/stream/watch/{streamId}</strong>
           </p>
         )}
 
