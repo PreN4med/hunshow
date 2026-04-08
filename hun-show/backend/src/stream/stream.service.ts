@@ -8,7 +8,8 @@ import ffmpeg = require('fluent-ffmpeg');
 
 @Injectable()
 export class StreamService {
-  private activeProcesses: Map<string, any> = new Map();
+  // Map to track active FFmpeg processes so we can kill them if they leak or overlap
+  private activeProcesses: Map<string, ffmpeg.FfmpegCommand> = new Map();
   private chunkBuffers: Map<string, Buffer[]> = new Map();
 
   constructor(
@@ -56,7 +57,7 @@ export class StreamService {
       (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0',
     );
 
-    // Process every 3 chunks (~6 seconds of video)
+    // Process every 3 chunks to keep individual jobs smaller for limited RAM
     if (chunkCount % 3 === 0) {
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
     }
@@ -67,25 +68,53 @@ export class StreamService {
     tmpDir: string,
     inputFile: string,
   ): Promise<void> {
+    // Kill any existing FFmpeg process for this specific stream before starting a new one
+    const existingProcess = this.activeProcesses.get(streamId);
+    if (existingProcess) {
+      try {
+        existingProcess.kill('SIGKILL');
+      } catch {
+        // Process might already be finished
+      }
+      this.activeProcesses.delete(streamId);
+    }
+
     const segmentPattern = path.join(tmpDir, 'segment%03d.ts');
     const playlistFile = path.join(tmpDir, 'playlist.m3u8');
 
     await new Promise<void>((resolve, reject) => {
-      ffmpeg(inputFile)
+      const command = ffmpeg(inputFile)
         .outputOptions([
           '-c:v libx264',
-          '-preset superfast',
+          '-preset ultrafast',
           '-tune zerolatency',
+          '-crf 28',
+          '-maxrate 1M',
+          '-bufsize 2M',
           '-c:a aac',
           '-hls_time 4',
-          '-hls_list_size 10',
+          '-hls_list_size 5',
           '-hls_flags append_list+delete_segments',
           `-hls_segment_filename ${segmentPattern}`,
         ])
         .output(playlistFile)
-        .on('end', () => resolve())
-        .on('error', (err: Error) => reject(err))
-        .run();
+        .on('start', () => {
+          this.activeProcesses.set(streamId, command);
+        })
+        .on('end', () => {
+          this.activeProcesses.delete(streamId);
+          resolve();
+        })
+        .on('error', (err: Error) => {
+          this.activeProcesses.delete(streamId);
+          if (!err.message.includes('SIGKILL')) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+
+      command.run();
     });
 
     await this.uploadHLSToR2(streamId, tmpDir);
@@ -114,6 +143,13 @@ export class StreamService {
   }
 
   async endStream(streamId: string): Promise<void> {
+    // Force kill any remaining FFmpeg process first
+    const activeProc = this.activeProcesses.get(streamId);
+    if (activeProc) {
+      activeProc.kill('SIGKILL');
+      this.activeProcesses.delete(streamId);
+    }
+
     await this.redis.hset(`stream:${streamId}`, 'status', 'ended');
     await this.redis.srem('active-streams', streamId);
 
@@ -123,15 +159,18 @@ export class StreamService {
     // Clean up temp directory
     const streamData = await this.redis.hgetall(`stream:${streamId}`);
     if (streamData?.tmpDir && fs.existsSync(streamData.tmpDir)) {
-      fs.rmSync(streamData.tmpDir, { recursive: true });
+      try {
+        fs.rmSync(streamData.tmpDir, { recursive: true });
+      } catch (e) {
+        console.error('Failed to delete temp directory', e);
+      }
     }
 
+    // Manual Garbage Collection for our Maps
     this.chunkBuffers.delete(streamId);
-    this.activeProcesses.delete(streamId);
   }
 
   private async cleanupR2Segments(streamId: string): Promise<void> {
-    // List and delete all segments for this stream
     const keys = await this.r2.listFiles(`streams/${streamId}/`);
     for (const key of keys) {
       await this.r2.deleteFile(key);
