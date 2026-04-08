@@ -56,8 +56,8 @@ export class StreamService {
       (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0',
     );
 
-    // Process every 5 chunks (~10 seconds of video)
-    if (chunkCount % 5 === 0) {
+    // Process every 3 chunks (~6 seconds of video)
+    if (chunkCount % 3 === 0) {
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
     }
   }
@@ -74,6 +74,8 @@ export class StreamService {
       ffmpeg(inputFile)
         .outputOptions([
           '-c:v libx264',
+          '-preset superfast',
+          '-tune zerolatency',
           '-c:a aac',
           '-hls_time 4',
           '-hls_list_size 10',
