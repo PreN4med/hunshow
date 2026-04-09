@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Video, VideoDocument } from './video.schema';
@@ -112,6 +112,28 @@ export class VideosService {
     );
   }
 
+  // Get all videos uploaded by a specific user
+  async findByUser(userId: string) {
+    const videos = await this.videoModel.find({ uploadedBy: userId }).exec();
+
+    return Promise.all(
+      videos.map(async (v) => {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        return {
+          _id: v._id,
+          title: v.title,
+          description: v.description,
+          videoUrl: v.videoUrl,
+          uploadedBy: v.uploadedBy,
+          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          createdAt: v.createdAt,
+          duration: v.duration,
+          thumbnailUrl: v.thumbnailUrl,
+        };
+      }),
+    );
+  }
+
   async findOne(id: string): Promise<VideoDocument> {
     const video = await this.videoModel.findById(id).exec();
     if (!video) throw new NotFoundException('Video not found');
@@ -131,9 +153,16 @@ export class VideosService {
     return { url };
   }
 
-  async delete(id: string): Promise<{ message: string }> {
+  // Delete a video - checks ownership before deleting
+  async delete(id: string, requestingUserId: string): Promise<{ message: string }> {
     const video = await this.videoModel.findById(id);
     if (!video) throw new NotFoundException('Video not found');
+
+    // Edge case: only the uploader can delete their own video
+    if (video.uploadedBy !== requestingUserId) {
+      throw new ForbiddenException('You can only delete your own videos');
+    }
+
     await this.r2Service.deleteFile(video.videoUrl);
     if (video.thumbnailUrl) await this.r2Service.deleteFile(video.thumbnailUrl);
     await this.videoModel.findByIdAndDelete(id);
