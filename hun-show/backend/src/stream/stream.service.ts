@@ -22,7 +22,6 @@ export class StreamService {
     userId: string,
     title: string,
   ): Promise<void> {
-    // Create temp directory for HLS segments
     const tmpDir = path.join(os.tmpdir(), `stream-${streamId}`);
     fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -36,6 +35,7 @@ export class StreamService {
       viewerCount: 0,
       status: 'live',
       tmpDir,
+      chunkCount: 0,
     });
     await this.redis.sadd('active-streams', streamId);
     await this.redis.expire(`stream:${streamId}`, 86400);
@@ -52,13 +52,20 @@ export class StreamService {
     fs.appendFileSync(inputFile, chunkBuffer);
 
     // Track chunk count in redis
-    await this.redis.hincrby(`stream:${streamId}`, 'chunkCount', 1);
-    const chunkCount = parseInt(
-      (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0',
+    const chunkCount = await this.redis.hincrby(
+      `stream:${streamId}`,
+      'chunkCount',
+      1,
     );
 
-    // Process every 6 chunks
+    // Process every 6 chunks, but ONLY if another process isn't already running for this stream
     if (chunkCount % 6 === 0) {
+      if (this.activeProcesses.has(streamId)) {
+        console.warn(
+          `[Stream] Transcode in progress for ${streamId}. Skipping this cycle to prevent OOM.`,
+        );
+        return;
+      }
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
     }
   }
@@ -73,15 +80,23 @@ export class StreamService {
     const segmentName = `seg-${chunkCountStr}.ts`;
     const outputPath = path.join(tmpDir, segmentName);
 
+    const processingFile = path.join(
+      tmpDir,
+      `processing-${chunkCountStr}.webm`,
+    );
+
     if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) {
       return;
     }
 
+    fs.renameSync(inputFile, processingFile);
+
     await new Promise<void>((resolve, reject) => {
-      ffmpeg(inputFile)
-        .on('start', (command) =>
-          console.log('FFmpeg spawned with command: ' + command),
-        )
+      const command = ffmpeg(processingFile)
+        .on('start', (cmdLine) => {
+          console.log('FFmpeg spawned with command: ' + cmdLine);
+          this.activeProcesses.set(streamId, command);
+        })
         .on('stderr', (line) => console.log('FFmpeg output: ' + line))
         .outputOptions([
           '-c:v libx264',
@@ -92,45 +107,35 @@ export class StreamService {
         ])
         .output(outputPath)
         .on('end', () => {
+          this.activeProcesses.delete(streamId);
           resolve();
         })
         .on('error', (err) => {
+          this.activeProcesses.delete(streamId);
+          console.error(`FFmpeg Error for ${streamId}:`, err.message);
           reject(err);
-        })
-        .run();
+        });
+
+      command.run();
     });
 
-    const buffer = fs.readFileSync(outputPath);
-    await this.r2.uploadBuffer(
-      buffer,
-      `streams/${streamId}/${segmentName}`,
-      'video/mp2t',
-    );
-
-    await this.redis.rpush(`playlist:${streamId}`, segmentName);
-
-    fs.writeFileSync(inputFile, '');
-
+    // Read and upload the generated segment
     if (fs.existsSync(outputPath)) {
+      const buffer = fs.readFileSync(outputPath);
+      await this.r2.uploadBuffer(
+        buffer,
+        `streams/${streamId}/${segmentName}`,
+        'video/mp2t',
+      );
+
+      await this.redis.rpush(`playlist:${streamId}`, segmentName);
+
+      // Cleanup segment and processing file
       fs.unlinkSync(outputPath);
     }
-  }
 
-  private async uploadHLSToR2(streamId: string, tmpDir: string): Promise<void> {
-    const files = fs.readdirSync(tmpDir);
-
-    for (const file of files) {
-      if (file.endsWith('.ts') || file.endsWith('.m3u8')) {
-        const filePath = path.join(tmpDir, file);
-        const buffer = fs.readFileSync(filePath);
-        const key = `streams/${streamId}/${file}`;
-
-        const mimetype = file.endsWith('.m3u8')
-          ? 'application/vnd.apple.mpegurl'
-          : 'video/mp2t';
-
-        await this.r2.uploadBuffer(buffer, key, mimetype);
-      }
+    if (fs.existsSync(processingFile)) {
+      fs.unlinkSync(processingFile);
     }
   }
 
@@ -143,10 +148,15 @@ export class StreamService {
   }
 
   async endStream(streamId: string): Promise<void> {
-    // Force kill any remaining FFmpeg process first
+    // Force kill any remaining FFmpeg process
     const activeProc = this.activeProcesses.get(streamId);
     if (activeProc) {
-      activeProc.kill('SIGKILL');
+      console.log(`[Cleanup] Killing active FFmpeg process for ${streamId}`);
+      try {
+        activeProc.kill('SIGKILL');
+      } catch (e) {
+        console.error('Error killing process:', e);
+      }
       this.activeProcesses.delete(streamId);
     }
 
@@ -160,20 +170,23 @@ export class StreamService {
     const streamData = await this.redis.hgetall(`stream:${streamId}`);
     if (streamData?.tmpDir && fs.existsSync(streamData.tmpDir)) {
       try {
-        fs.rmSync(streamData.tmpDir, { recursive: true });
+        fs.rmSync(streamData.tmpDir, { recursive: true, force: true });
       } catch (e) {
         console.error('Failed to delete temp directory', e);
       }
     }
 
-    // Manual Garbage Collection for our Maps
     this.chunkBuffers.delete(streamId);
   }
 
   private async cleanupR2Segments(streamId: string): Promise<void> {
-    const keys = await this.r2.listFiles(`streams/${streamId}/`);
-    for (const key of keys) {
-      await this.r2.deleteFile(key);
+    try {
+      const keys = await this.r2.listFiles(`streams/${streamId}/`);
+      for (const key of keys) {
+        await this.r2.deleteFile(key);
+      }
+    } catch (e) {
+      console.error('R2 Cleanup failed:', e);
     }
   }
 
