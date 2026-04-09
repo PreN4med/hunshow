@@ -66,12 +66,19 @@ export default function WatchStreamPage() {
             const hls = new Hls({
               liveSyncDurationCount: 3,
               liveMaxLatencyDurationCount: 10,
+              enableWorker: true,
+              lowLatencyMode: true,
             });
+
             hlsRef.current = hls;
             hls.loadSource(playlistUrl);
             hls.attachMedia(videoRef.current);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              videoRef.current?.play().catch(() => {});
+
+            hls.on(Hls.Events.ERROR, (event, data) => {
+              if (data.fatal) {
+                console.warn("HLS Error:", data);
+                hls.recoverMediaError();
+              }
             });
           } else if (
             videoRef.current.canPlayType("application/vnd.apple.mpegurl")

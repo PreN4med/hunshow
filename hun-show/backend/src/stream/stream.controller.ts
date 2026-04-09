@@ -97,6 +97,7 @@ export class StreamController {
       '#EXT-X-VERSION:3',
       '#EXT-X-TARGETDURATION:5',
       '#EXT-X-MEDIA-SEQUENCE:0',
+      '#EXT-X-PLAYLIST-TYPE:EVENT',
     ];
 
     segments.forEach((seg) => {
