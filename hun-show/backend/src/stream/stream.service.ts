@@ -70,6 +70,8 @@ export class StreamService {
     }
   }
 
+  private streamHeaders: Map<string, Buffer> = new Map();
+
   private async generateHLSSegment(
     streamId: string,
     tmpDir: string,
@@ -79,31 +81,47 @@ export class StreamService {
       (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0';
     const segmentName = `seg-${chunkCountStr}.ts`;
     const outputPath = path.join(tmpDir, segmentName);
-
     const processingFile = path.join(
       tmpDir,
       `processing-${chunkCountStr}.webm`,
     );
 
-    if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) {
+    if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) return;
+
+    if (!this.streamHeaders.has(streamId)) {
+      const fullFile = fs.readFileSync(inputFile);
+      this.streamHeaders.set(streamId, fullFile);
+    }
+
+    const currentData: Buffer = fs.readFileSync(inputFile);
+
+    const header: Buffer | undefined = this.streamHeaders.get(streamId);
+
+    if (!header) {
+      console.error(
+        `[Stream] Missing header for ${streamId}. Skipping transcode.`,
+      );
       return;
     }
 
-    fs.renameSync(inputFile, processingFile);
+    const validWebM: Buffer = Buffer.concat([header, currentData]);
+    fs.writeFileSync(processingFile, validWebM);
+
+    fs.writeFileSync(inputFile, '');
 
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg(processingFile)
         .on('start', (cmdLine) => {
-          console.log('FFmpeg spawned with command: ' + cmdLine);
+          console.log(`[FFmpeg] Full command for ${streamId}: ${cmdLine}`);
           this.activeProcesses.set(streamId, command);
         })
-        .on('stderr', (line) => console.log('FFmpeg output: ' + line))
         .outputOptions([
           '-c:v libx264',
           '-preset ultrafast',
           '-tune zerolatency',
           '-pix_fmt yuv420p',
           '-f mpegts',
+          '-ss 00:00:01',
         ])
         .output(outputPath)
         .on('end', () => {
@@ -112,7 +130,6 @@ export class StreamService {
         })
         .on('error', (err) => {
           this.activeProcesses.delete(streamId);
-          console.error(`FFmpeg Error for ${streamId}:`, err.message);
           reject(err);
         });
 
