@@ -8,6 +8,7 @@ import {
   UseInterceptors,
   Body,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { VideosService } from './video.service';
@@ -51,6 +52,12 @@ export class VideosController {
     return this.videosService.findAll();
   }
 
+  // Get all videos uploaded by a specific user (for account page)
+  @Get('user/:userId')
+  async getVideosByUser(@Param('userId') userId: string) {
+    return this.videosService.findByUser(userId);
+  }
+
   @Get(':id')
   async getVideo(@Param('id') id: string) {
     return this.videosService.findOne(id);
@@ -66,8 +73,10 @@ export class VideosController {
     return this.videosService.getThumbnailUrl(id);
   }
 
+  // Delete a video - requires userId to verify ownership.
   @Delete(':id')
-  async deleteVideo(@Param('id') id: string) {
-    return this.videosService.delete(id);
+  async deleteVideo(@Param('id') id: string, @Query('userId') userId: string) {
+    if (!userId) throw new BadRequestException('userId is required');
+    return this.videosService.delete(id, userId);
   }
 }
