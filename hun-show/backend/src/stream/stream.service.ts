@@ -59,14 +59,13 @@ export class StreamService {
     );
 
     // Process every 6 chunks, but ONLY if another process isn't already running for this stream
-    if (chunkCount % 6 === 0) {
-      if (this.activeProcesses.has(streamId)) {
-        console.warn(
-          `[Stream] Transcode in progress for ${streamId}. Skipping this cycle to prevent OOM.`,
-        );
-        return;
-      }
+    if (chunkCount % 6 === 0 && !this.activeProcesses.has(streamId)) {
+      console.log(`[Stream] Triggering segment generation for ${streamId}`);
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
+    } else if (chunkCount % 6 === 0 && this.activeProcesses.has(streamId)) {
+      console.warn(
+        `[Stream] Server busy, buffering chunks at ${chunkCount} for ${streamId}...`,
+      );
     }
   }
 
@@ -120,8 +119,10 @@ export class StreamService {
           '-preset ultrafast',
           '-tune zerolatency',
           '-pix_fmt yuv420p',
+          '-r 30',
+          '-g 60',
           '-f mpegts',
-          '-ss 00:00:01',
+          '-ss 0.1',
         ])
         .output(outputPath)
         .on('end', () => {
