@@ -107,15 +107,16 @@ export class StreamController {
       `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
-    window.forEach((seg) => {
+    let prevSeq = mediaSequence - 1;
+    window.forEach((seg, i) => {
+      const currentSeq = mediaSequence + i;
+      if (currentSeq !== prevSeq + 1) {
+        manifest.push('#EXT-X-DISCONTINUITY');
+      }
+      prevSeq = currentSeq;
       manifest.push('#EXTINF:3.0,');
       manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
-
-    const streamData = await this.streamService.getStream(streamId);
-    if (streamData?.status === 'ended') {
-      manifest.push('#EXT-X-ENDLIST');
-    }
 
     res.set('Content-Type', 'application/vnd.apple.mpegurl');
     res.set('Access-Control-Allow-Origin', '*');
