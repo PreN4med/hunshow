@@ -42,7 +42,6 @@ export class StreamController {
   ) {
     if (!chunk || !streamId)
       throw new BadRequestException('chunk and streamId are required');
-
     try {
       await this.streamService.processChunk(streamId, chunk.buffer);
       return { success: true };
@@ -84,32 +83,45 @@ export class StreamController {
     const segments = await this.streamService.getPlaylistSegments(streamId);
 
     if (!segments || segments.length === 0) {
-      return res.status(404).send('Stream segments not found in Redis yet');
+      return res.status(404).send('No segments yet');
     }
 
     if (!publicUrl) {
-      console.error('R2_PUBLIC_URL is not defined in environment variables');
-      return res.status(500).send('Server configuration error');
+      return res
+        .status(500)
+        .send('Server configuration error: R2_PUBLIC_URL not set');
     }
+
+    const baseUrl = publicUrl.endsWith('/')
+      ? publicUrl.slice(0, -1)
+      : publicUrl;
+
+    // Keep a sliding window of the last 10 segments for the live playlist
+    const windowSize = 10;
+    const window = segments.slice(-windowSize);
+    // EXT-X-MEDIA-SEQUENCE must advance so HLS.js knows these are new segments
+    const mediaSequence = Math.max(0, segments.length - windowSize);
 
     const manifest = [
       '#EXTM3U',
       '#EXT-X-VERSION:3',
       '#EXT-X-TARGETDURATION:5',
-      '#EXT-X-MEDIA-SEQUENCE:0',
-      '#EXT-X-PLAYLIST-TYPE:EVENT',
+      `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
-    segments.forEach((seg) => {
+    window.forEach((seg) => {
       manifest.push('#EXTINF:4.0,');
-      const baseUrl = publicUrl.endsWith('/')
-        ? publicUrl.slice(0, -1)
-        : publicUrl;
       manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
 
+    const streamData = await this.streamService.getStream(streamId);
+    if (streamData?.status === 'ended') {
+      manifest.push('#EXT-X-ENDLIST');
+    }
+
     res.set('Content-Type', 'application/vnd.apple.mpegurl');
     res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.send(manifest.join('\n'));
   }
 }
