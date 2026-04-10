@@ -64,8 +64,8 @@ export default function WatchStreamPage() {
 
           if (Hls.isSupported()) {
             const hls = new Hls({
-              liveSyncDurationCount: 2,
-              liveMaxLatencyDurationCount: 6,
+              liveSyncDurationCount: 3,
+              liveMaxLatencyDurationCount: 8,
               maxBufferLength: 30,
               maxMaxBufferLength: 60,
               manifestLoadingTimeOut: 20000,
@@ -76,6 +76,7 @@ export default function WatchStreamPage() {
               levelLoadingMaxRetry: 4,
               lowLatencyMode: false,
               enableWorker: true,
+              initialLiveManifestSize: 3,
             });
 
             hlsRef.current = hls;
