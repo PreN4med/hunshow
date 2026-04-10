@@ -96,21 +96,19 @@ export class StreamController {
       ? publicUrl.slice(0, -1)
       : publicUrl;
 
-    // Keep a sliding window of the last 10 segments for the live playlist
     const windowSize = 10;
     const window = segments.slice(-windowSize);
-    // EXT-X-MEDIA-SEQUENCE must advance so HLS.js knows these are new segments
     const mediaSequence = Math.max(0, segments.length - windowSize);
 
     const manifest = [
       '#EXTM3U',
       '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:5',
+      '#EXT-X-TARGETDURATION:4',
       `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
     window.forEach((seg) => {
-      manifest.push('#EXTINF:4.0,');
+      manifest.push('#EXTINF:3.0,');
       manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
 

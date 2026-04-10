@@ -99,7 +99,7 @@ export default function BroadcastPage() {
         }
       };
 
-      mediaRecorder.start(2000);
+      mediaRecorder.start(1000);
       setStreaming(true);
       setError("");
     } catch (err) {
@@ -164,7 +164,10 @@ export default function BroadcastPage() {
         {streaming && streamId && (
           <p style={{ fontSize: 13, opacity: 0.6 }}>
             Share this link with viewers:{" "}
-            <strong>https://fall-capstone-499-group-7.vercel.app/stream/watch/{streamId}</strong>
+            <strong>
+              https://fall-capstone-499-group-7.vercel.app/stream/watch/
+              {streamId}
+            </strong>
           </p>
         )}
 

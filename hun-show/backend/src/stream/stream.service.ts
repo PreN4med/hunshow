@@ -10,8 +10,8 @@ import ffmpeg = require('fluent-ffmpeg');
 export class StreamService {
   private activeProcesses: Map<string, ffmpeg.FfmpegCommand> = new Map();
   private chunkBuffers: Map<string, Buffer[]> = new Map();
-  // Stores ONLY the WebM EBML+Tracks header bytes, not video data
   private streamHeaders: Map<string, Buffer> = new Map();
+  private pendingSegments: Map<string, boolean> = new Map();
 
   constructor(
     private readonly redis: RedisService,
@@ -55,29 +55,27 @@ export class StreamService {
       1,
     );
 
-    if (chunkCount % 6 === 0 && !this.activeProcesses.has(streamId)) {
-      console.log(`[Stream] Triggering segment generation for ${streamId}`);
-      await this.generateHLSSegment(streamId, tmpDir, inputFile);
-    } else if (chunkCount % 6 === 0 && this.activeProcesses.has(streamId)) {
-      console.warn(
-        `[Stream] Server busy at chunk ${chunkCount} for ${streamId}`,
-      );
+    if (chunkCount % 3 === 0) {
+      if (!this.activeProcesses.has(streamId)) {
+        await this.generateHLSSegment(streamId, tmpDir, inputFile);
+        // If data accumulated while we were processing, do one more pass
+        if (this.pendingSegments.get(streamId)) {
+          this.pendingSegments.delete(streamId);
+          await this.generateHLSSegment(streamId, tmpDir, inputFile);
+        }
+      } else {
+        this.pendingSegments.set(streamId, true);
+      }
     }
   }
 
-  /**
-   * Extracts just the WebM EBML+Tracks header (everything before the first Cluster).
-   * A WebM Cluster starts with byte sequence 0x1F 0x43 0xB6 0x75.
-   * We need to prepend this to every processing chunk so ffmpeg can decode it.
-   */
   private extractWebMHeader(data: Buffer): Buffer {
-    // WebM Cluster EBML ID: 0x1F43B675
+    // WebM Cluster EBML ID: 0x1F43B675 — everything before this is the reusable header
     const clusterMarker = Buffer.from([0x1f, 0x43, 0xb6, 0x75]);
     const clusterIdx = data.indexOf(clusterMarker);
     if (clusterIdx > 0) {
       return data.slice(0, clusterIdx);
     }
-    // If no cluster found yet, the whole thing is header (first chunk case)
     return data;
   }
 
@@ -97,10 +95,9 @@ export class StreamService {
 
     if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) return;
 
-    // Read the accumulated data since last segment
     const currentData: Buffer = fs.readFileSync(inputFile);
 
-    // Extract and cache the WebM header from the first batch of data
+    // Extract and cache only the EBML/Tracks header bytes on first segment
     if (!this.streamHeaders.has(streamId)) {
       const header = this.extractWebMHeader(currentData);
       console.log(
@@ -111,10 +108,10 @@ export class StreamService {
 
     const header = this.streamHeaders.get(streamId)!;
 
-    // Clear the input file BEFORE processing so new chunks accumulate cleanly
+    // Clear input file before processing so new chunks accumulate cleanly
     fs.writeFileSync(inputFile, '');
 
-    // Prepend the EBML header so ffmpeg can decode this standalone chunk
+    // Prepend EBML header so ffmpeg can decode this standalone chunk
     const validWebM: Buffer = Buffer.concat([header, currentData]);
     fs.writeFileSync(processingFile, validWebM);
 
@@ -154,7 +151,7 @@ export class StreamService {
         'video/mp2t',
       );
       await this.redis.rpush(`playlist:${streamId}`, segmentName);
-      console.log(`[Stream] Uploaded segment ${segmentName} for ${streamId}`);
+      console.log(`[Stream] Uploaded ${segmentName} for ${streamId}`);
       fs.unlinkSync(outputPath);
     }
 
@@ -174,6 +171,7 @@ export class StreamService {
   async endStream(streamId: string): Promise<void> {
     const activeProc = this.activeProcesses.get(streamId);
     if (activeProc) {
+      console.log(`[Cleanup] Killing active FFmpeg process for ${streamId}`);
       try {
         activeProc.kill('SIGKILL');
       } catch (e) {
@@ -196,6 +194,7 @@ export class StreamService {
     }
 
     this.streamHeaders.delete(streamId);
+    this.pendingSegments.delete(streamId);
     this.chunkBuffers.delete(streamId);
   }
 

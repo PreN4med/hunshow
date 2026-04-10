@@ -64,10 +64,18 @@ export default function WatchStreamPage() {
 
           if (Hls.isSupported()) {
             const hls = new Hls({
-              liveSyncDurationCount: 3,
-              liveMaxLatencyDurationCount: 10,
+              liveSyncDurationCount: 2,
+              liveMaxLatencyDurationCount: 6,
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
+              manifestLoadingTimeOut: 20000,
+              manifestLoadingMaxRetry: 6,
+              fragLoadingTimeOut: 30000,
+              fragLoadingMaxRetry: 6,
+              levelLoadingTimeOut: 20000,
+              levelLoadingMaxRetry: 4,
+              lowLatencyMode: false,
               enableWorker: true,
-              lowLatencyMode: true,
             });
 
             hlsRef.current = hls;
@@ -75,9 +83,22 @@ export default function WatchStreamPage() {
             hls.attachMedia(videoRef.current);
 
             hls.on(Hls.Events.ERROR, (event, data) => {
+              console.warn("[HLS] Error:", data.type, data.details, data.fatal);
               if (data.fatal) {
-                console.warn("HLS Error:", data);
-                hls.recoverMediaError();
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    console.log("[HLS] Network error, trying to recover...");
+                    hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    console.log("[HLS] Media error, trying to recover...");
+                    hls.recoverMediaError();
+                    break;
+                  default:
+                    console.error("[HLS] Unrecoverable error");
+                    hls.destroy();
+                    break;
+                }
               }
             });
           } else if (
