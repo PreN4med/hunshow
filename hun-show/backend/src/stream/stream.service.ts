@@ -12,6 +12,7 @@ export class StreamService {
   private chunkBuffers: Map<string, Buffer[]> = new Map();
   private streamHeaders: Map<string, Buffer> = new Map();
   private pendingSegments: Map<string, boolean> = new Map();
+  private segmentOffsets: Map<string, number> = new Map();
 
   constructor(
     private readonly redis: RedisService,
@@ -92,6 +93,8 @@ export class StreamService {
       tmpDir,
       `processing-${chunkCountStr}.webm`,
     );
+    const segmentIndex = Math.floor(parseInt(chunkCountStr) / 3);
+    const offsetSeconds = segmentIndex * 3;
 
     if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) return;
 
@@ -129,6 +132,7 @@ export class StreamService {
           '-r 30',
           '-g 60',
           '-f mpegts',
+          `-output_ts_offset ${offsetSeconds}`,
         ])
         .output(outputPath)
         .on('end', () => {
@@ -196,6 +200,7 @@ export class StreamService {
     this.streamHeaders.delete(streamId);
     this.pendingSegments.delete(streamId);
     this.chunkBuffers.delete(streamId);
+    this.segmentOffsets.delete(streamId);
   }
 
   private async cleanupR2Segments(streamId: string): Promise<void> {
