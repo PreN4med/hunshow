@@ -56,7 +56,7 @@ export class StreamService {
       1,
     );
 
-    if (chunkCount % 3 === 0) {
+    if (chunkCount % 6 === 0) {
       if (!this.activeProcesses.has(streamId)) {
         await this.generateHLSSegment(streamId, tmpDir, inputFile);
         // If data accumulated while we were processing, do one more pass
