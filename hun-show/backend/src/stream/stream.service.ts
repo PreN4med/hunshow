@@ -8,9 +8,10 @@ import ffmpeg = require('fluent-ffmpeg');
 
 @Injectable()
 export class StreamService {
-  // Map to track active FFmpeg processes so we can kill them if they leak or overlap
   private activeProcesses: Map<string, ffmpeg.FfmpegCommand> = new Map();
   private chunkBuffers: Map<string, Buffer[]> = new Map();
+  // Stores ONLY the WebM EBML+Tracks header bytes, not video data
+  private streamHeaders: Map<string, Buffer> = new Map();
 
   constructor(
     private readonly redis: RedisService,
@@ -24,9 +25,7 @@ export class StreamService {
   ): Promise<void> {
     const tmpDir = path.join(os.tmpdir(), `stream-${streamId}`);
     fs.mkdirSync(tmpDir, { recursive: true });
-
     this.chunkBuffers.set(streamId, []);
-
     await this.redis.hset(`stream:${streamId}`, {
       streamId,
       userId,
@@ -48,28 +47,39 @@ export class StreamService {
     const tmpDir = streamData.tmpDir;
     const inputFile = path.join(tmpDir, 'input.webm');
 
-    // Append chunk to the growing input file
     fs.appendFileSync(inputFile, chunkBuffer);
 
-    // Track chunk count in redis
     const chunkCount = await this.redis.hincrby(
       `stream:${streamId}`,
       'chunkCount',
       1,
     );
 
-    // Process every 6 chunks, but ONLY if another process isn't already running for this stream
     if (chunkCount % 6 === 0 && !this.activeProcesses.has(streamId)) {
       console.log(`[Stream] Triggering segment generation for ${streamId}`);
       await this.generateHLSSegment(streamId, tmpDir, inputFile);
     } else if (chunkCount % 6 === 0 && this.activeProcesses.has(streamId)) {
       console.warn(
-        `[Stream] Server busy, buffering chunks at ${chunkCount} for ${streamId}...`,
+        `[Stream] Server busy at chunk ${chunkCount} for ${streamId}`,
       );
     }
   }
 
-  private streamHeaders: Map<string, Buffer> = new Map();
+  /**
+   * Extracts just the WebM EBML+Tracks header (everything before the first Cluster).
+   * A WebM Cluster starts with byte sequence 0x1F 0x43 0xB6 0x75.
+   * We need to prepend this to every processing chunk so ffmpeg can decode it.
+   */
+  private extractWebMHeader(data: Buffer): Buffer {
+    // WebM Cluster EBML ID: 0x1F43B675
+    const clusterMarker = Buffer.from([0x1f, 0x43, 0xb6, 0x75]);
+    const clusterIdx = data.indexOf(clusterMarker);
+    if (clusterIdx > 0) {
+      return data.slice(0, clusterIdx);
+    }
+    // If no cluster found yet, the whole thing is header (first chunk case)
+    return data;
+  }
 
   private async generateHLSSegment(
     streamId: string,
@@ -87,31 +97,31 @@ export class StreamService {
 
     if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) return;
 
-    if (!this.streamHeaders.has(streamId)) {
-      const fullFile = fs.readFileSync(inputFile);
-      this.streamHeaders.set(streamId, fullFile);
-    }
-
+    // Read the accumulated data since last segment
     const currentData: Buffer = fs.readFileSync(inputFile);
 
-    const header: Buffer | undefined = this.streamHeaders.get(streamId);
-
-    if (!header) {
-      console.error(
-        `[Stream] Missing header for ${streamId}. Skipping transcode.`,
+    // Extract and cache the WebM header from the first batch of data
+    if (!this.streamHeaders.has(streamId)) {
+      const header = this.extractWebMHeader(currentData);
+      console.log(
+        `[Stream] Cached WebM header for ${streamId}: ${header.length} bytes`,
       );
-      return;
+      this.streamHeaders.set(streamId, header);
     }
 
+    const header = this.streamHeaders.get(streamId)!;
+
+    // Clear the input file BEFORE processing so new chunks accumulate cleanly
+    fs.writeFileSync(inputFile, '');
+
+    // Prepend the EBML header so ffmpeg can decode this standalone chunk
     const validWebM: Buffer = Buffer.concat([header, currentData]);
     fs.writeFileSync(processingFile, validWebM);
-
-    fs.writeFileSync(inputFile, '');
 
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg(processingFile)
         .on('start', (cmdLine) => {
-          console.log(`[FFmpeg] Full command for ${streamId}: ${cmdLine}`);
+          console.log(`[FFmpeg] ${streamId}: ${cmdLine}`);
           this.activeProcesses.set(streamId, command);
         })
         .outputOptions([
@@ -122,7 +132,6 @@ export class StreamService {
           '-r 30',
           '-g 60',
           '-f mpegts',
-          '-ss 0.1',
         ])
         .output(outputPath)
         .on('end', () => {
@@ -131,13 +140,12 @@ export class StreamService {
         })
         .on('error', (err) => {
           this.activeProcesses.delete(streamId);
+          console.error(`[FFmpeg] Error for ${streamId}:`, err.message);
           reject(err);
         });
-
       command.run();
     });
 
-    // Read and upload the generated segment
     if (fs.existsSync(outputPath)) {
       const buffer = fs.readFileSync(outputPath);
       await this.r2.uploadBuffer(
@@ -145,10 +153,8 @@ export class StreamService {
         `streams/${streamId}/${segmentName}`,
         'video/mp2t',
       );
-
       await this.redis.rpush(`playlist:${streamId}`, segmentName);
-
-      // Cleanup segment and processing file
+      console.log(`[Stream] Uploaded segment ${segmentName} for ${streamId}`);
       fs.unlinkSync(outputPath);
     }
 
@@ -166,10 +172,8 @@ export class StreamService {
   }
 
   async endStream(streamId: string): Promise<void> {
-    // Force kill any remaining FFmpeg process
     const activeProc = this.activeProcesses.get(streamId);
     if (activeProc) {
-      console.log(`[Cleanup] Killing active FFmpeg process for ${streamId}`);
       try {
         activeProc.kill('SIGKILL');
       } catch (e) {
@@ -180,11 +184,8 @@ export class StreamService {
 
     await this.redis.hset(`stream:${streamId}`, 'status', 'ended');
     await this.redis.srem('active-streams', streamId);
-
-    // Clean up R2 segments
     await this.cleanupR2Segments(streamId);
 
-    // Clean up temp directory
     const streamData = await this.redis.hgetall(`stream:${streamId}`);
     if (streamData?.tmpDir && fs.existsSync(streamData.tmpDir)) {
       try {
@@ -194,6 +195,7 @@ export class StreamService {
       }
     }
 
+    this.streamHeaders.delete(streamId);
     this.chunkBuffers.delete(streamId);
   }
 
