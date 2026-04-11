@@ -20,8 +20,11 @@ export default function WatchPage() {
 
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [uploadedBy, setUploadedBy] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -65,6 +68,17 @@ export default function WatchPage() {
           if (thumbData.url) thumbnailUrl = thumbData.url;
         }
 
+        setUploadedBy(data.uploadedBy);
+
+        // Check if the logged in user is the owner
+        const userData = localStorage.getItem("user");
+        if (userData) {
+          const user = JSON.parse(userData);
+          if (user.id === data.uploadedBy) {
+            setIsOwner(true);
+          }
+        }
+
         setMovie({
           id: data._id,
           title: data.title,
@@ -86,6 +100,36 @@ export default function WatchPage() {
 
     loadMovie();
   }, [id]);
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm("Are you sure you want to delete this video?");
+    if (!confirmed) return;
+
+    const userData = localStorage.getItem("user");
+    if (!userData) return;
+    const user = JSON.parse(userData);
+
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`${API_URL}/videos/${id}?userId=${user.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.message || "Failed to delete video");
+        return;
+      }
+
+      // Redirect to home after deletion
+      router.push("/");
+    } catch (err) {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -118,16 +162,40 @@ export default function WatchPage() {
           ← Back to Browse
         </Link>
 
-        <h1
-          style={{
-            marginTop: 12,
-            fontSize: 28,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {movie.title}
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: "-0.01em",
+              margin: 0,
+            }}
+          >
+            {movie.title}
+          </h1>
+
+          {/* Only show delete button if the logged in user owns this video */}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                padding: "8px 18px",
+                borderRadius: 8,
+                border: "1px solid #ff6b6b",
+                backgroundColor: "transparent",
+                color: "#ff6b6b",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+                opacity: deleting ? 0.5 : 1,
+              }}
+            >
+              {deleting ? "Deleting..." : "Delete Video"}
+            </button>
+          )}
+        </div>
+
         <p style={{ opacity: 0.75, marginTop: 6, fontSize: 14 }}>
           By {movie.creator} {movie.year ? `• ${movie.year}` : ""}
         </p>
