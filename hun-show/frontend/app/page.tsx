@@ -86,7 +86,6 @@ export default function HomePage() {
                 placeholder="Search titles, creators, tags..."
               />
               <button className="btn btnPrimary">Search</button>
-              <button className="btn btnGhost">Watch Party</button>
             </div>
           </div>
         </section>

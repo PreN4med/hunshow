@@ -6,6 +6,8 @@ export type Movie = {
   thumbnail: string;
   videoUrl: string;
   description: string;
+  likes?: number;
+  likedByCurrentUser?: boolean;
 };
 
 export const mockMovies: Movie[] = [
