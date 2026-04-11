@@ -139,6 +139,7 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
             fontSize: 28,
             transition: "all 0.2s ease",
             opacity: playing ? 0 : 1,
+            pointerEvents: playing ? "none" : "auto",
             backdropFilter: "blur(4px)",
           }}
           onMouseEnter={(e) => {

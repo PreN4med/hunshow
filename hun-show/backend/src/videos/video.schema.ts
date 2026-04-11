@@ -26,6 +26,9 @@ export class Video {
   @Prop({ required: true })
   uploadedBy: string;
 
+  @Prop({ type: [String], default: [] })
+  likedBy: string[];
+
   @Prop({ default: 0 })
   duration: number;
 

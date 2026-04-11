@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Video, VideoDocument } from './video.schema';
@@ -44,6 +48,7 @@ export class VideosService {
       uploadedBy: metadata.uploadedBy,
       videoUrl,
       thumbnailUrl,
+      likedBy: [],
       duration: 0,
     });
 
@@ -98,7 +103,7 @@ export class VideosService {
           where: { id: v.uploadedBy },
         });
         return {
-          _id: v._id,
+          _id: v._id.toString(),
           title: v.title,
           description: v.description,
           videoUrl: v.videoUrl,
@@ -106,6 +111,7 @@ export class VideosService {
           creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
           createdAt: v.createdAt,
           duration: v.duration,
+          likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
         };
       }),
@@ -120,7 +126,7 @@ export class VideosService {
       videos.map(async (v) => {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         return {
-          _id: v._id,
+          _id: v._id.toString(),
           title: v.title,
           description: v.description,
           videoUrl: v.videoUrl,
@@ -128,16 +134,78 @@ export class VideosService {
           creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
           createdAt: v.createdAt,
           duration: v.duration,
+          likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
         };
       }),
     );
   }
 
-  async findOne(id: string): Promise<VideoDocument> {
+  async findOne(
+    id: string,
+    currentUserId?: string,
+  ): Promise<
+    | VideoDocument
+    | {
+        _id: string;
+        title: string;
+        description?: string;
+        videoUrl: string;
+        uploadedBy: string;
+        creatorName: string;
+        createdAt?: Date;
+        duration: number;
+        likes: number;
+        likedByCurrentUser: boolean;
+        thumbnailUrl?: string;
+      }
+  > {
     const video = await this.videoModel.findById(id).exec();
     if (!video) throw new NotFoundException('Video not found');
-    return video;
+
+    const user = await this.userRepo.findOne({
+      where: { id: video.uploadedBy },
+    });
+    const creatorName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+    const likedByCurrentUser = Boolean(
+      currentUserId && video.likedBy?.includes(currentUserId),
+    );
+
+    return {
+      _id: video._id.toString(),
+      title: video.title,
+      description: video.description,
+      videoUrl: video.videoUrl,
+      uploadedBy: video.uploadedBy,
+      creatorName,
+      createdAt: video.createdAt,
+      duration: video.duration,
+      likes: video.likedBy?.length || 0,
+      likedByCurrentUser,
+      thumbnailUrl: video.thumbnailUrl,
+    };
+  }
+
+  async toggleLike(
+    id: string,
+    userId: string,
+  ): Promise<{ likes: number; liked: boolean }> {
+    const video = await this.videoModel.findById(id).exec();
+    if (!video) throw new NotFoundException('Video not found');
+
+    const likedBy = video.likedBy || [];
+    const alreadyLiked = likedBy.includes(userId);
+    if (alreadyLiked) {
+      video.likedBy = likedBy.filter((id) => id !== userId);
+    } else {
+      video.likedBy = [...likedBy, userId];
+    }
+
+    await video.save();
+    return {
+      likes: video.likedBy.length,
+      liked: !alreadyLiked,
+    };
   }
 
   async getSignedUrl(id: string): Promise<{ url: string }> {
@@ -154,7 +222,10 @@ export class VideosService {
   }
 
   // Delete a video - checks ownership before deleting
-  async delete(id: string, requestingUserId: string): Promise<{ message: string }> {
+  async delete(
+    id: string,
+    requestingUserId: string,
+  ): Promise<{ message: string }> {
     const video = await this.videoModel.findById(id);
     if (!video) throw new NotFoundException('Video not found');
 

@@ -5,7 +5,7 @@ import { mockMovies, Movie } from "@/lib/mockMovies";
 import Link from "next/link";
 import CustomVideoPlayer from "@/components/CustomVideoPlayer";
 import Header from "@/components/Header";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -16,11 +16,26 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 export default function WatchPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
 
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [liked, setLiked] = useState(false);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    let parsedUserId: string | null = null;
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        parsedUserId = parsedUser?.id ?? null;
+      } catch {
+        parsedUserId = null;
+      }
+    }
+    setUserId(parsedUserId);
+
     async function loadMovie() {
       // This is for hardcoded movies, can remove if we remove the mock movies
       const mock = mockMovies.find((m) => m.id === id);
@@ -33,7 +48,8 @@ export default function WatchPage() {
       // Otherwise fetch from backend
       try {
         // Get video metadata from MongoDB
-        const res = await fetch(`${API_URL}/videos/${id}`);
+        const query = parsedUserId ? `?userId=${encodeURIComponent(parsedUserId)}` : '';
+        const res = await fetch(`${API_URL}/videos/${id}${query}`);
         if (!res.ok) throw new Error("Not found");
         const data = await res.json();
 
@@ -53,11 +69,14 @@ export default function WatchPage() {
           id: data._id,
           title: data.title,
           description: data.description || "",
-          creator: data.uploadedBy,
+          creator: data.creatorName || data.uploadedBy,
           year: new Date(data.createdAt).getFullYear(),
           thumbnail: thumbnailUrl,
           videoUrl: urlData.url,
+          likes: data.likes || 0,
+          likedByCurrentUser: data.likedByCurrentUser || false,
         });
+        setLiked(Boolean(data.likedByCurrentUser));
       } catch (err) {
         setMovie(null);
       } finally {
@@ -136,16 +155,53 @@ export default function WatchPage() {
             {movie.description}
           </p>
 
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
+              type="button"
+              onClick={async () => {
+                const storedUser = localStorage.getItem('user');
+                const currentUserId = storedUser
+                  ? JSON.parse(storedUser)?.id
+                  : null;
+
+                if (!currentUserId) {
+                  router.push('/login');
+                  return;
+                }
+
+                try {
+                  const res = await fetch(`${API_URL}/videos/${id}/like`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ userId: currentUserId }),
+                  });
+                  const result = await res.json();
+                  setMovie((cur) =>
+                    cur ? { ...cur, likes: result.likes } : cur,
+                  );
+                  setLiked(result.liked);
+                } catch (err) {
+                  console.error('Failed to toggle like:', err);
+                }
+              }}
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: "1px solid #ccc",
+                background: liked ? '#e8f4ff' : 'white',
+                cursor: 'pointer',
+                zIndex: 10,
+                position: 'relative',
+                pointerEvents: 'auto',
               }}
             >
-              ⭐ Rate (placeholder)
+              {liked ? '❤️ Liked' : '👍 Like'}
             </button>
+            <span style={{ color: '#555' }}>
+              {movie?.likes ?? 0} likes
+            </span>
           </div>
         </section>
       </main>
