@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Param,
   UploadedFiles,
@@ -48,8 +49,8 @@ export class VideosController {
   }
 
   @Get()
-  async getAllVideos() {
-    return this.videosService.findAll();
+  async getAllVideos(@Query('q') query?: string) {
+    return this.videosService.findAll(query);
   }
 
   // Get all videos uploaded by a specific user (for account page)
@@ -73,6 +74,20 @@ export class VideosController {
   ) {
     if (!userId) throw new BadRequestException('userId is required');
     return this.videosService.toggleLike(id, userId);
+  }
+
+  @Patch(':id')
+  async updateVideo(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+    @Body('title') title?: string,
+    @Body('description') description?: string,
+  ) {
+    if (!userId) throw new BadRequestException('userId is required');
+    if (title === undefined && description === undefined) {
+      throw new BadRequestException('Nothing to update');
+    }
+    return this.videosService.updateVideo(id, userId, title, description);
   }
 
   @Get(':id/url')

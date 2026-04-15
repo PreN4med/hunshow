@@ -11,6 +11,8 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
   createdAt?: string;
 }
 
@@ -54,6 +56,16 @@ function getInitials(nameOrEmail: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+function getFullName(user: User) {
+  const explicitName = user.name?.trim();
+  if (explicitName) return explicitName;
+
+  const first = user.firstName?.trim() || "";
+  const last = user.lastName?.trim() || "";
+  const full = `${first} ${last}`.trim();
+  return full;
+}
+
 export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +88,7 @@ export default function AccountPage() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-      setEditedName(parsedUser.name || "");
+      setEditedName(getFullName(parsedUser));
       setLoading(false);
       fetchUserVideos(parsedUser.id);
     } catch {
@@ -171,7 +183,8 @@ export default function AccountPage() {
 
   const displayName = useMemo(() => {
     if (!user) return "";
-    return user.name?.trim() || "No display name yet";
+    const fullName = getFullName(user);
+    return fullName || "No display name yet";
   }, [user]);
 
   const getThumbnailSrc = (thumbnailUrl?: string) => {
@@ -226,7 +239,7 @@ export default function AccountPage() {
               <div className="accountStatCard">
                 <span className="accountStatLabel">Display name</span>
                 <strong className="accountStatValueSmall">
-                  {user.name?.trim() || "Not set"}
+                  {getFullName(user) || "Not set"}
                 </strong>
               </div>
 
@@ -288,7 +301,7 @@ export default function AccountPage() {
                         </button>
                         <button
                           onClick={() => {
-                            setEditedName(user.name || "");
+                            setEditedName(getFullName(user));
                             setIsEditing(false);
                           }}
                           className="btn btnGhost accountSmallBtn"
@@ -372,6 +385,13 @@ export default function AccountPage() {
                         <div className="videoActions">
                           <Link href={`/watch/${video._id}`} className="btn btnGhost">
                             Open
+                          </Link>
+
+                          <Link
+                            href={`/watch/${video._id}?edit=true`}
+                            className="btn btnGhost btnEditGhost"
+                          >
+                            Edit
                           </Link>
 
                           <button

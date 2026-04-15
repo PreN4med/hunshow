@@ -16,6 +16,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 
+function escapeRegex(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 @Injectable()
 export class VideosService {
   constructor(
@@ -94,8 +98,31 @@ export class VideosService {
     return this.r2Service.uploadFile(thumbFile, 'thumbnails');
   }
 
-  async findAll() {
-    const videos = await this.videoModel.find().exec();
+  async findAll(search?: string) {
+    const filter: Record<string, any> = {};
+    if (search?.trim()) {
+      const cleaned = search.trim();
+      const regex = new RegExp(escapeRegex(cleaned), 'i');
+      const matchedUsers = await this.userRepo
+        .createQueryBuilder('user')
+        .where('LOWER(user.firstName) LIKE LOWER(:q)', { q: `%${cleaned}%` })
+        .orWhere('LOWER(user.lastName) LIKE LOWER(:q)', { q: `%${cleaned}%` })
+        .getMany();
+
+      const creatorIds = matchedUsers.map((user) => user.id);
+
+      filter.$or = [
+        { title: regex },
+        { description: regex },
+        { genres: { $elemMatch: { $regex: cleaned, $options: 'i' } } },
+      ];
+
+      if (creatorIds.length) {
+        filter.$or.push({ uploadedBy: { $in: creatorIds } });
+      }
+    }
+
+    const videos = await this.videoModel.find(filter).exec();
 
     return Promise.all(
       videos.map(async (v) => {
@@ -219,6 +246,30 @@ export class VideosService {
     if (!video.thumbnailUrl) return { url: null };
     const url = await this.r2Service.getSignedUrl(video.thumbnailUrl);
     return { url };
+  }
+
+  async updateVideo(
+    id: string,
+    requestingUserId: string,
+    title?: string,
+    description?: string,
+  ) {
+    const video = await this.videoModel.findById(id).exec();
+    if (!video) throw new NotFoundException('Video not found');
+
+    if (video.uploadedBy !== requestingUserId) {
+      throw new ForbiddenException('You can only edit your own videos');
+    }
+
+    if (title !== undefined) {
+      video.title = title;
+    }
+    if (description !== undefined) {
+      video.description = description;
+    }
+
+    await video.save();
+    return this.findOne(id, requestingUserId);
   }
 
   // Delete a video - checks ownership before deleting
