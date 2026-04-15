@@ -31,8 +31,15 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Something went wrong");
 
+      const userWithName = {
+        ...data.user,
+        name:
+          data.user.name?.trim() ||
+          `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim(),
+      };
+
       localStorage.setItem("accessToken", data.accessToken);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("user", JSON.stringify(userWithName));
 
       router.push("/");
     } catch (err: any) {

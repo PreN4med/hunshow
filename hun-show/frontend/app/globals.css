@@ -161,10 +161,21 @@ img{ max-width: 100%; height: auto; }
 .btnPrimary:hover{ filter: brightness(0.95); }
 
 .btnGhost{
+  font-weight: 700;
   background: rgba(255,255,255,0.7);
   border-color: rgba(95,37,159,0.30);
 }
 .btnGhost:hover{ background: var(--p-soft); }
+
+.btnEditGhost{
+  color: rgba(95,37,159);
+  border-color: rgba(95,37,159,0.30);
+  background: transparent;
+}
+.btnEditGhost:hover{
+  background: var(--p-soft);
+  color: var(--ink);
+}
 
 .sectionTitle{
   margin: 22px 0 10px;

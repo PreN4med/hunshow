@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { mockMovies, Movie } from "@/lib/mockMovies";
+import { Movie } from "@/lib/mockMovies";
 import Header from "@/components/Header";
 
 type VideoFromDB = {
@@ -31,36 +31,61 @@ async function fetchThumbnailUrl(id: string): Promise<string> {
 
 export default function HomePage() {
   const [dbMovies, setDbMovies] = useState<Movie[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
+  async function fetchVideos(query = "") {
+    try {
+      const baseUrl = API_URL?.replace(/\/$/, '') ?? '';
+      const url = `${baseUrl}/videos${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error('Failed to fetch videos:', res.status, res.statusText, data);
+        setDbMovies([]);
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        console.error('Expected video array but got:', data);
+        setDbMovies([]);
+        return;
+      }
+
+      const movies = await Promise.all(
+        data.map(async (v) => ({
+          id: v._id,
+          title: v.title,
+          creator: v.creatorName,
+          year: new Date(v.createdAt).getFullYear(),
+          thumbnail: v.thumbnailUrl
+            ? await fetchThumbnailUrl(v._id)
+            : "/thumbnails/default.jpg",
+          videoUrl: v.videoUrl,
+          description: v.description || "",
+        })),
+      );
+
+      setDbMovies(movies);
+    } catch (err) {
+      console.error("Failed to fetch videos:", err);
+      setDbMovies([]);
+    }
+  }
 
   useEffect(() => {
-    async function fetchVideos() {
-      try {
-        const res = await fetch(`${API_URL}/videos`);
-        const data: VideoFromDB[] = await res.json();
-
-        const movies = await Promise.all(
-          data.map(async (v) => ({
-            id: v._id,
-            title: v.title,
-            creator: v.creatorName,
-            year: new Date(v.createdAt).getFullYear(),
-            thumbnail: v.thumbnailUrl
-              ? await fetchThumbnailUrl(v._id)
-              : "/thumbnails/default.jpg",
-            videoUrl: v.videoUrl,
-            description: v.description || "",
-          })),
-        );
-
-        setDbMovies(movies);
-      } catch (err) {
-        console.error("Failed to fetch videos:", err);
-      }
-    }
     fetchVideos();
   }, []);
 
-  const allMovies = [...mockMovies, ...dbMovies];
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSearching(true);
+    await fetchVideos(searchTerm);
+    setIsSearching(false);
+  }
+
+  const allMovies = dbMovies;
 
   return (
     <>
@@ -75,18 +100,22 @@ export default function HomePage() {
               .
             </h1>
             <p className="p">
-              A clean Netflix-style space for Hunter/college students to upload,
+              A space for Hunter College students to upload,
               browse, and watch student work. Private, simple, and
               collaborative.
             </p>
 
-            <div className="searchRow">
+            <form className="searchRow" onSubmit={handleSearch}>
               <input
                 className="input"
                 placeholder="Search titles, creators, tags..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
               />
-              <button className="btn btnPrimary">Search</button>
-            </div>
+              <button className="btn btnPrimary" type="submit" disabled={isSearching}>
+                {isSearching ? 'Searching...' : 'Search'}
+              </button>
+            </form>
           </div>
         </section>
 

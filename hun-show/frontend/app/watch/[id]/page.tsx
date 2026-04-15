@@ -5,7 +5,7 @@ import { mockMovies, Movie } from "@/lib/mockMovies";
 import Link from "next/link";
 import CustomVideoPlayer from "@/components/CustomVideoPlayer";
 import Header from "@/components/Header";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -17,12 +17,18 @@ export default function WatchPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const startEditing = searchParams.get("edit") === "true";
 
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [editedDescription, setEditedDescription] = useState("");
   const [uploadedBy, setUploadedBy] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -79,7 +85,7 @@ export default function WatchPage() {
           }
         }
 
-        setMovie({
+        const movieFromApi = {
           id: data._id,
           title: data.title,
           description: data.description || "",
@@ -89,8 +95,15 @@ export default function WatchPage() {
           videoUrl: urlData.url,
           likes: data.likes || 0,
           likedByCurrentUser: data.likedByCurrentUser || false,
-        });
+        };
+
+        setMovie(movieFromApi);
+        setEditedTitle(movieFromApi.title);
+        setEditedDescription(movieFromApi.description);
         setLiked(Boolean(data.likedByCurrentUser));
+        if (startEditing) {
+          setIsEditing(true);
+        }
       } catch (err) {
         setMovie(null);
       } finally {
@@ -131,6 +144,55 @@ export default function WatchPage() {
     }
   };
 
+  const handleSave = async () => {
+    if (!userId) {
+      router.push('/login');
+      return;
+    }
+
+    if (!editedTitle.trim()) {
+      alert('Title is required.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const res = await fetch(`${API_URL}/videos/${id}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: editedTitle.trim(),
+          description: editedDescription.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || 'Failed to save changes');
+        return;
+      }
+
+      setMovie((cur) =>
+        cur
+          ? {
+              ...cur,
+              title: data.title,
+              description: data.description || "",
+            }
+          : cur,
+      );
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Failed to save video details:', err);
+      alert('Failed to save changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -163,16 +225,18 @@ export default function WatchPage() {
         </Link>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-          <h1
-            style={{
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: "-0.01em",
-              margin: 0,
-            }}
-          >
-            {movie.title}
-          </h1>
+          <div>
+            <h1
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                letterSpacing: "-0.01em",
+                margin: 0,
+              }}
+            >
+              {movie.title}
+            </h1>
+          </div>
 
           {/* Only show delete button if the logged in user owns this video */}
           {isOwner && (
@@ -216,12 +280,97 @@ export default function WatchPage() {
         </div>
 
         <section style={{ marginTop: 32 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
-            Description
-          </h2>
-          <p style={{ opacity: 0.85, lineHeight: 1.6, fontSize: 15 }}>
-            {movie.description}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
+              Description
+            </h2>
+            {isOwner && !isEditing && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                style={{
+                padding: "8px 18px",
+                borderRadius: 8,
+                border: "1px solid rgba(95,37,159,0.75)",
+                backgroundColor: "transparent",
+                color: "rgba(95,37,159,0.75)",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+                opacity: deleting ? 0.5 : 1,
+              }}
+              >
+                Edit Details
+              </button>
+            )}
+          </div>
+          {isOwner && isEditing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                value={editedTitle}
+                onChange={(event) => setEditedTitle(event.target.value)}
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ddd',
+                  fontSize: 16,
+                }}
+                placeholder="Title"
+              />
+              <textarea
+                value={editedDescription}
+                onChange={(event) => setEditedDescription(event.target.value)}
+                rows={5}
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ddd',
+                  fontSize: 15,
+                  resize: 'vertical',
+                }}
+                placeholder="Description"
+              />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: 10,
+                    border: 'none',
+                    backgroundColor: 'var(--p)',
+                    color: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedTitle(movie.title);
+                    setEditedDescription(movie.description);
+                  }}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: 10,
+                    border: '1px solid #ccc',
+                    backgroundColor: 'white',
+                    color: '#333',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p style={{ opacity: 0.85, lineHeight: 1.6, fontSize: 15 }}>
+              {movie.description}
+            </p>
+          )}
 
           <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
             <button

@@ -9,10 +9,14 @@ type Props = {
 
 export default function CustomVideoPlayer({ src, poster, title }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const hideControlsTimeout = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [showControls, setShowControls] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoSrc, setVideoSrc] = useState<string>(
     typeof src === "string" ? src : "",
   );
@@ -53,9 +57,15 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
     if (v.paused) {
       v.play();
       setPlaying(true);
+      if (isFullscreen) resetHideControlsTimer();
     } else {
       v.pause();
       setPlaying(false);
+      setShowControls(true);
+      if (hideControlsTimeout.current) {
+        window.clearTimeout(hideControlsTimeout.current);
+        hideControlsTimeout.current = null;
+      }
     }
   };
 
@@ -74,6 +84,23 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
     setVolume(val);
   };
 
+  const resetHideControlsTimer = () => {
+    if (!isFullscreen) return;
+    if (hideControlsTimeout.current) {
+      window.clearTimeout(hideControlsTimeout.current);
+    }
+    hideControlsTimeout.current = window.setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  };
+
+  const handleMouseMove = () => {
+    if (isFullscreen) {
+      setShowControls(true);
+      resetHideControlsTimer();
+    }
+  };
+
   const formatTime = (s: number) => {
     if (!isFinite(s)) return "0:00";
     const m = Math.floor(s / 60);
@@ -84,16 +111,57 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
   };
 
   const handleFullScreen = async () => {
-    const container = videoRef.current?.parentElement;
+    const container = playerContainerRef.current;
     if (!container) return;
     if (document.fullscreenElement) await document.exitFullscreen();
     else await container.requestFullscreen();
   };
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const isFS = document.fullscreenElement === playerContainerRef.current;
+      setIsFullscreen(isFS);
+      setShowControls(true);
+      if (hideControlsTimeout.current) {
+        window.clearTimeout(hideControlsTimeout.current);
+        hideControlsTimeout.current = null;
+      }
+      if (isFS && playing) {
+        resetHideControlsTimer();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      if (hideControlsTimeout.current) {
+        window.clearTimeout(hideControlsTimeout.current);
+      }
+    };
+  }, [playing]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+
+    const onDocumentMouseMove = () => {
+      setShowControls(true);
+      resetHideControlsTimer();
+    };
+
+    document.addEventListener("mousemove", onDocumentMouseMove);
+    return () => {
+      document.removeEventListener("mousemove", onDocumentMouseMove);
+    };
+  }, [isFullscreen]);
+
   const progress = duration ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div
+      ref={playerContainerRef}
+      onMouseMove={handleMouseMove}
+      style={{ display: "flex", flexDirection: "column", gap: 0 }}
+    >
       {/* Video Container */}
       <div 
         style={{ 
@@ -163,6 +231,10 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: "16px",
+        opacity: showControls ? 1 : 0,
+        visibility: showControls ? "visible" : "hidden",
+        transition: "opacity 0.2s ease, visibility 0.2s ease",
+        pointerEvents: showControls ? "auto" : "none",
       }}>
         {/* Progress Bar */}
         <div style={{ position: "relative", height: 6 }}>
