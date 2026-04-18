@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface User {
@@ -18,6 +18,8 @@ export default function Header({ page = "other" }: HeaderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showHeader, setShowHeader] = useState(true);
+  const prevScrollY = useRef(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -45,8 +47,27 @@ export default function Header({ page = "other" }: HeaderProps) {
     router.push("/");
   };
 
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      if (currentScrollY < 60) {
+        setShowHeader(true);
+      } else if (currentScrollY > prevScrollY.current + 10) {
+        setShowHeader(false);
+      } else if (currentScrollY < prevScrollY.current - 10) {
+        setShowHeader(true);
+      }
+
+      prevScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
-    <div className="topbar">
+    <div className={`topbar${showHeader ? "" : " hidden"}`}>
       <div className="container">
         <div className="nav">
           <Link href="/" className="brand" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "10px" }}>

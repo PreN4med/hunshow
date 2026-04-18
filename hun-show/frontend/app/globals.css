@@ -55,6 +55,13 @@ img{ max-width: 100%; height: auto; }
   backdrop-filter: blur(12px);
   background: rgba(255,255,255,0.78);
   border-bottom: 1px solid var(--line);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.topbar.hidden{
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .nav{
