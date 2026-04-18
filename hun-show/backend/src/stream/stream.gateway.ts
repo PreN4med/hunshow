@@ -15,6 +15,7 @@ import { StreamService } from './stream.service';
     origin: [
       'http://localhost:3000',
       'https://fall-capstone-499-group-7.vercel.app',
+      'https://hunshow.vercel.app',
     ],
     credentials: true,
   },
