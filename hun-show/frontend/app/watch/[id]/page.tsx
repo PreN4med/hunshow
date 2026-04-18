@@ -57,7 +57,9 @@ export default function WatchPage() {
       // Otherwise fetch from backend
       try {
         // Get video metadata from MongoDB
-        const query = parsedUserId ? `?userId=${encodeURIComponent(parsedUserId)}` : '';
+        const query = parsedUserId
+          ? `?userId=${encodeURIComponent(parsedUserId)}`
+          : "";
         const res = await fetch(`${API_URL}/videos/${id}${query}`);
         if (!res.ok) throw new Error("Not found");
         const data = await res.json();
@@ -90,7 +92,7 @@ export default function WatchPage() {
           title: data.title,
           description: data.description || "",
           creator: data.creatorName || data.uploadedBy,
-          year: new Date(data.createdAt).getFullYear(),
+          formattedDate: new Date(data.createdAt).toLocaleDateString("en-US"),
           thumbnail: thumbnailUrl,
           videoUrl: urlData.url,
           likes: data.likes || 0,
@@ -115,7 +117,9 @@ export default function WatchPage() {
   }, [id]);
 
   const handleDelete = async () => {
-    const confirmed = window.confirm("Are you sure you want to delete this video?");
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this video?",
+    );
     if (!confirmed) return;
 
     const userData = localStorage.getItem("user");
@@ -146,32 +150,35 @@ export default function WatchPage() {
 
   const handleSave = async () => {
     if (!userId) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
     if (!editedTitle.trim()) {
-      alert('Title is required.');
+      alert("Title is required.");
       return;
     }
 
     setSaving(true);
 
     try {
-      const res = await fetch(`${API_URL}/videos/${id}?userId=${encodeURIComponent(userId)}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
+      const res = await fetch(
+        `${API_URL}/videos/${id}?userId=${encodeURIComponent(userId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: editedTitle.trim(),
+            description: editedDescription.trim(),
+          }),
         },
-        body: JSON.stringify({
-          title: editedTitle.trim(),
-          description: editedDescription.trim(),
-        }),
-      });
+      );
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.message || 'Failed to save changes');
+        alert(data.message || "Failed to save changes");
         return;
       }
 
@@ -186,8 +193,8 @@ export default function WatchPage() {
       );
       setIsEditing(false);
     } catch (err) {
-      console.error('Failed to save video details:', err);
-      alert('Failed to save changes.');
+      console.error("Failed to save video details:", err);
+      alert("Failed to save changes.");
     } finally {
       setSaving(false);
     }
@@ -224,7 +231,14 @@ export default function WatchPage() {
           ← Back to Browse
         </Link>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: 12,
+          }}
+        >
           <div>
             <h1
               style={{
@@ -280,7 +294,15 @@ export default function WatchPage() {
         </div>
 
         <section style={{ marginTop: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+            }}
+          >
             <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
               Description
             </h2>
@@ -289,30 +311,30 @@ export default function WatchPage() {
                 type="button"
                 onClick={() => setIsEditing(true)}
                 style={{
-                padding: "8px 18px",
-                borderRadius: 8,
-                border: "1px solid rgba(95,37,159,0.75)",
-                backgroundColor: "transparent",
-                color: "rgba(95,37,159,0.75)",
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: "pointer",
-                opacity: deleting ? 0.5 : 1,
-              }}
+                  padding: "8px 18px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(95,37,159,0.75)",
+                  backgroundColor: "transparent",
+                  color: "rgba(95,37,159,0.75)",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  opacity: deleting ? 0.5 : 1,
+                }}
               >
                 Edit Details
               </button>
             )}
           </div>
           {isOwner && isEditing ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <input
                 value={editedTitle}
                 onChange={(event) => setEditedTitle(event.target.value)}
                 style={{
                   padding: 12,
                   borderRadius: 10,
-                  border: '1px solid #ddd',
+                  border: "1px solid #ddd",
                   fontSize: 16,
                 }}
                 placeholder="Title"
@@ -324,27 +346,27 @@ export default function WatchPage() {
                 style={{
                   padding: 12,
                   borderRadius: 10,
-                  border: '1px solid #ddd',
+                  border: "1px solid #ddd",
                   fontSize: 15,
-                  resize: 'vertical',
+                  resize: "vertical",
                 }}
                 placeholder="Description"
               />
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={saving}
                   style={{
-                    padding: '10px 18px',
+                    padding: "10px 18px",
                     borderRadius: 10,
-                    border: 'none',
-                    backgroundColor: 'var(--p)',
-                    color: 'white',
-                    cursor: 'pointer',
+                    border: "none",
+                    backgroundColor: "var(--p)",
+                    color: "white",
+                    cursor: "pointer",
                   }}
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {saving ? "Saving..." : "Save Changes"}
                 </button>
                 <button
                   type="button"
@@ -354,12 +376,12 @@ export default function WatchPage() {
                     setEditedDescription(movie.description);
                   }}
                   style={{
-                    padding: '10px 18px',
+                    padding: "10px 18px",
                     borderRadius: 10,
-                    border: '1px solid #ccc',
-                    backgroundColor: 'white',
-                    color: '#333',
-                    cursor: 'pointer',
+                    border: "1px solid #ccc",
+                    backgroundColor: "white",
+                    color: "#333",
+                    cursor: "pointer",
                   }}
                 >
                   Cancel
@@ -372,25 +394,32 @@ export default function WatchPage() {
             </p>
           )}
 
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
             <button
               type="button"
               onClick={async () => {
-                const storedUser = localStorage.getItem('user');
+                const storedUser = localStorage.getItem("user");
                 const currentUserId = storedUser
                   ? JSON.parse(storedUser)?.id
                   : null;
 
                 if (!currentUserId) {
-                  router.push('/login');
+                  router.push("/login");
                   return;
                 }
 
                 try {
                   const res = await fetch(`${API_URL}/videos/${id}/like`, {
-                    method: 'POST',
+                    method: "POST",
                     headers: {
-                      'Content-Type': 'application/json',
+                      "Content-Type": "application/json",
                     },
                     body: JSON.stringify({ userId: currentUserId }),
                   });
@@ -400,25 +429,23 @@ export default function WatchPage() {
                   );
                   setLiked(result.liked);
                 } catch (err) {
-                  console.error('Failed to toggle like:', err);
+                  console.error("Failed to toggle like:", err);
                 }
               }}
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: "1px solid #ccc",
-                background: liked ? '#e8f4ff' : 'white',
-                cursor: 'pointer',
+                background: liked ? "#e8f4ff" : "white",
+                cursor: "pointer",
                 zIndex: 10,
-                position: 'relative',
-                pointerEvents: 'auto',
+                position: "relative",
+                pointerEvents: "auto",
               }}
             >
-              {liked ? '❤️ Liked' : '👍 Like'}
+              {liked ? "❤️ Liked" : "👍 Like"}
             </button>
-            <span style={{ color: '#555' }}>
-              {movie?.likes ?? 0} likes
-            </span>
+            <span style={{ color: "#555" }}>{movie?.likes ?? 0} likes</span>
           </div>
         </section>
       </main>
