@@ -65,7 +65,7 @@ export default function HomePage() {
           id: v._id,
           title: v.title,
           creator: v.creatorName,
-          year: new Date(v.createdAt).getFullYear(),
+          year: new Date(v.createdAt).toLocaleDateString("en-US"),
           thumbnail: v.thumbnailUrl
             ? await fetchThumbnailUrl(v._id)
             : "/thumbnails/default.jpg",
@@ -196,7 +196,7 @@ export default function HomePage() {
                 <div className="cardBody">
                   <p className="cardTitle">{m.title}</p>
                   <p className="cardMeta">
-                    {m.creator} {m.year ? `• ${m.year}` : ""}
+                    {m.creator} {m.createdAt ? `• ${m.createdAt}` : ""}
                   </p>
                 </div>
               </Link>

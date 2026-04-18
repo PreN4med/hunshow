@@ -92,7 +92,7 @@ export default function WatchPage() {
           title: data.title,
           description: data.description || "",
           creator: data.creatorName || data.uploadedBy,
-          formattedDate: new Date(data.createdAt).toLocaleDateString("en-US"),
+          year: new Date(data.createdAt).getFullYear(),
           thumbnail: thumbnailUrl,
           videoUrl: urlData.url,
           likes: data.likes || 0,
@@ -275,7 +275,7 @@ export default function WatchPage() {
         </div>
 
         <p style={{ opacity: 0.75, marginTop: 6, fontSize: 14 }}>
-          By {movie.creator} {movie.year ? `• ${movie.year}` : ""}
+          By {movie.creator} {movie.createdAt ? `• ${movie.createdAt}` : ""}
         </p>
 
         <div
