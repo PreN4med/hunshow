@@ -92,7 +92,7 @@ export default function WatchPage() {
           title: data.title,
           description: data.description || "",
           creator: data.creatorName || data.uploadedBy,
-          year: new Date(data.createdAt).getFullYear(),
+          createdAt: new Date(data.createdAt).toLocaleDateString("en-US"),
           thumbnail: thumbnailUrl,
           videoUrl: urlData.url,
           likes: data.likes || 0,

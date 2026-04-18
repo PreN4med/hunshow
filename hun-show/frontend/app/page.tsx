@@ -65,7 +65,7 @@ export default function HomePage() {
           id: v._id,
           title: v.title,
           creator: v.creatorName,
-          year: new Date(v.createdAt).toLocaleDateString("en-US"),
+          createdAt: new Date(v.createdAt).toLocaleDateString("en-US"),
           thumbnail: v.thumbnailUrl
             ? await fetchThumbnailUrl(v._id)
             : "/thumbnails/default.jpg",
