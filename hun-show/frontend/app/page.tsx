@@ -17,7 +17,9 @@ type VideoFromDB = {
   thumbnailUrl?: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 async function fetchThumbnailUrl(id: string): Promise<string> {
   try {
@@ -33,22 +35,27 @@ export default function HomePage() {
   const [dbMovies, setDbMovies] = useState<Movie[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   async function fetchVideos(query = "") {
     try {
-      const baseUrl = API_URL?.replace(/\/$/, '') ?? '';
-      const url = `${baseUrl}/videos${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`;
+      const url = `${API_URL}/videos${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`;
       const res = await fetch(url);
       const data = await res.json();
 
       if (!res.ok) {
-        console.error('Failed to fetch videos:', res.status, res.statusText, data);
+        console.error(
+          "Failed to fetch videos:",
+          res.status,
+          res.statusText,
+          data,
+        );
         setDbMovies([]);
         return;
       }
 
       if (!Array.isArray(data)) {
-        console.error('Expected video array but got:', data);
+        console.error("Expected video array but got:", data);
         setDbMovies([]);
         return;
       }
@@ -58,7 +65,7 @@ export default function HomePage() {
           id: v._id,
           title: v.title,
           creator: v.creatorName,
-          year: new Date(v.createdAt).getFullYear(),
+          createdAt: new Date(v.createdAt).toLocaleDateString("en-US"),
           thumbnail: v.thumbnailUrl
             ? await fetchThumbnailUrl(v._id)
             : "/thumbnails/default.jpg",
@@ -83,9 +90,24 @@ export default function HomePage() {
     setIsSearching(true);
     await fetchVideos(searchTerm);
     setIsSearching(false);
+    setShowSuggestions(false);
   }
 
   const allMovies = dbMovies;
+  const searchTermLower = searchTerm.trim().toLowerCase();
+  const suggestions = searchTermLower
+    ? allMovies
+        .filter(
+          (movie) =>
+            movie.title.toLowerCase().includes(searchTermLower) ||
+            movie.creator.toLowerCase().includes(searchTermLower),
+        )
+        .slice(0, 6)
+    : [];
+  const handleSuggestionSelect = (value: string) => {
+    setSearchTerm(value);
+    setShowSuggestions(false);
+  };
 
   return (
     <>
@@ -100,20 +122,51 @@ export default function HomePage() {
               .
             </h1>
             <p className="p">
-              A space for Hunter College students to upload,
-              browse, and watch student work. Private, simple, and
-              collaborative.
+              A space for Hunter College students to upload, browse, and watch
+              student work. Private, simple, and collaborative.
             </p>
 
             <form className="searchRow" onSubmit={handleSearch}>
-              <input
-                className="input"
-                placeholder="Search titles, creators, tags..."
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-              <button className="btn btnPrimary" type="submit" disabled={isSearching}>
-                {isSearching ? 'Searching...' : 'Search'}
+              <div className="autocompleteWrapper">
+                <input
+                  className="input"
+                  placeholder="Search titles, creators, tags..."
+                  value={searchTerm}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() =>
+                    setTimeout(() => setShowSuggestions(false), 100)
+                  }
+                />
+
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="autocompleteList">
+                    {suggestions.map((movie) => (
+                      <button
+                        type="button"
+                        key={movie.id}
+                        className="autocompleteItem"
+                        onMouseDown={() => handleSuggestionSelect(movie.title)}
+                      >
+                        <span>{movie.title}</span>
+                        <span className="autocompleteMeta">
+                          by {movie.creator}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                className="btn btnPrimary"
+                type="submit"
+                disabled={isSearching}
+              >
+                {isSearching ? "Searching..." : "Search"}
               </button>
             </form>
           </div>
@@ -124,26 +177,32 @@ export default function HomePage() {
           <span className="badge">{allMovies.length} titles</span>
         </div>
 
-        <section className="grid">
-          {allMovies.map((m) => (
-            <Link key={m.id} href={`/watch/${m.id}`} className="card">
-              <div className="thumb" style={{ position: "relative" }}>
-                <Image
-                  src={m.thumbnail || "/thumbnails/default.jpg"}
-                  alt={m.title}
-                  fill
-                  style={{ objectFit: "cover" }}
-                />
-              </div>
-              <div className="cardBody">
-                <p className="cardTitle">{m.title}</p>
-                <p className="cardMeta">
-                  {m.creator} {m.year ? `• ${m.year}` : ""}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </section>
+        {allMovies.length === 0 ? (
+          <p className="p">
+            No videos match your search. Try a different keyword.
+          </p>
+        ) : (
+          <section className="grid">
+            {allMovies.map((m) => (
+              <Link key={m.id} href={`/watch/${m.id}`} className="card">
+                <div className="thumb" style={{ position: "relative" }}>
+                  <Image
+                    src={m.thumbnail || "/thumbnails/default.jpg"}
+                    alt={m.title}
+                    fill
+                    style={{ objectFit: "cover" }}
+                  />
+                </div>
+                <div className="cardBody">
+                  <p className="cardTitle">{m.title}</p>
+                  <p className="cardMeta">
+                    {m.creator} {m.createdAt ? `• ${m.createdAt}` : ""}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </section>
+        )}
 
         <footer className="footer">
           © {new Date().getFullYear()} Hun-Show • All rights reserved.
