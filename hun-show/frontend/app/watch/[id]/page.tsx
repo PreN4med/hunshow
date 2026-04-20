@@ -86,6 +86,16 @@ function HeartIcon({ filled = false }: { filled?: boolean }) {
   );
 }
 
+function formatPersonName(value = "") {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function DownloadIcon() {
   return (
     <svg
@@ -152,9 +162,9 @@ export default function WatchPage() {
         const urlRes = await fetch(`${API_URL}/videos/${id}/url`);
         const urlData = await urlRes.json();
 
-        const currentCreator =
-          data.creatorName || data.uploadedBy || "Unknown creator";
-
+        const currentCreator = formatPersonName(
+          data.creatorName || data.uploadedBy || "Unknown creator"
+        );
         let thumbnailUrl = "/thumbnails/default.jpg";
         if (data.thumbnailUrl) {
           thumbnailUrl = await fetchThumbnailUrl(data._id);
@@ -201,8 +211,9 @@ export default function WatchPage() {
             candidates.map(async (video) => ({
               id: video._id,
               title: video.title,
-              creator:
-                video.creatorName || video.uploadedBy || "Unknown creator",
+              creator: formatPersonName(
+                video.creatorName || video.uploadedBy || "Unknown creator"
+              ),
               createdAt: new Date(video.createdAt).toLocaleDateString("en-US"),
               thumbnail: video.thumbnailUrl
                 ? await fetchThumbnailUrl(video._id)

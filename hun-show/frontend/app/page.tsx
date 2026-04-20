@@ -26,6 +26,18 @@ async function fetchThumbnailUrl(id: string): Promise<string> {
   }
 }
 
+function formatPersonName(value = "") {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(
+      (part) => part.charAt(0).toUpperCase() + part.slice(1)
+    )
+    .join(" ");
+}
+
 function SidebarIcon({
   kind,
 }: {
@@ -218,7 +230,7 @@ export default function HomePage() {
           return {
             id: v._id,
             title: v.title,
-            creator: v.creatorName,
+            creator: formatPersonName(v.creatorName || ""),
             createdAt: new Date(v.createdAt).toLocaleDateString("en-US"),
             createdAtRaw: v.createdAt,
             likes: v.likes || 0,
