@@ -594,7 +594,7 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
             width: 80,
             height: 80,
             borderRadius: "50%",
-            background: "rgba(95, 37, 159, 0.9)",
+            background: "rgba(112, 60, 168, 0.9)",
             border: "2px solid rgba(255,255,255,0.2)",
             color: "#fff",
             cursor: "pointer",
@@ -607,12 +607,12 @@ export default function CustomVideoPlayer({ src, poster, title }: Props) {
             backdropFilter: "blur(8px)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(95, 37, 159, 1)";
+            e.currentTarget.style.background = "rgba(112, 60, 168, 1)";
             e.currentTarget.style.transform = "translate(-50%, -50%) scale(1.1)";
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(95, 37, 159, 0.9)";
+            e.currentTarget.style.background = "rgba(112, 60, 168, 0.9)";
             e.currentTarget.style.transform = "translate(-50%, -50%) scale(1)";
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
           }}
