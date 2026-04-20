@@ -3,8 +3,23 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Header from "@/components/Header";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+function ArrowRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="authInlineIcon">
+      <path
+        d="M5 12H19M19 12L13 6M19 12L13 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +33,7 @@ export default function LoginPage() {
       setError("Please enter your email and password.");
       return;
     }
+
     setLoading(true);
     setError("");
 
@@ -25,7 +41,10 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+        }),
       });
 
       const data = await res.json();
@@ -43,66 +62,93 @@ export default function LoginPage() {
 
       router.push("/");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Login failed.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
-      <h1>Login</h1>
-      <p style={{ opacity: 0.75 }}>
-        (UI only for now — later you can enforce <b>.edu</b> emails)
-      </p>
+    <>
+      <Header page="home" />
 
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        <input
-          placeholder="Email (.edu)"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        {error && (
-          <p style={{ color: "red", fontSize: 13, margin: 0 }}>{error}</p>
-        )}
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-        <Link
-          href="/register"
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            textAlign: "center",
-            fontWeight: 500,
-            cursor: "pointer",
-            backgroundColor: "transparent",
-            display: "block",
-          }}
-        >
-          Register
-        </Link>
-      </div>
-    </main>
+      <main className="container authPage">
+        <section className="authShell">
+          <div className="authCard">
+            <div className="authHeader">
+              <p className="authEyebrow">Welcome back</p>
+              <h1 className="authTitle">Login</h1>
+              <p className="authSubtitle">
+                Sign in to upload, like, and manage your student films.
+              </p>
+            </div>
+
+            <div className="authForm">
+              <div className="authField">
+                <label className="authLabel" htmlFor="login-email">
+                  Email
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  className="accountInput authInput"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="authField">
+                <label className="authLabel" htmlFor="login-password">
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  className="accountInput authInput"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                />
+              </div>
+
+              {error ? <p className="authError">{error}</p> : null}
+
+              <div className="authActions">
+                <button
+                  type="button"
+                  onClick={handleLogin}
+                  disabled={loading}
+                  className="btn btnPrimary authSubmitBtn"
+                >
+                  <span>{loading ? "Signing in..." : "Sign in"}</span>
+                  <ArrowRightIcon />
+                </button>
+
+                <Link href="/register" className="btn btnGhost authSecondaryBtn">
+                  Register
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer className="footer">
+          <div className="footerInner">
+            <div className="footerLinks">
+              <Link href="/" className="footerLink">About</Link>
+              <Link href="/" className="footerLink">Q&amp;A</Link>
+              <Link href="/" className="footerLink">Privacy</Link>
+              <Link href="/" className="footerLink">Contact</Link>
+            </div>
+
+            <div className="footerCopy">
+              © {new Date().getFullYear()} Hun-Show • All rights reserved.
+            </div>
+          </div>
+        </footer>
+      </main>
+    </>
   );
 }

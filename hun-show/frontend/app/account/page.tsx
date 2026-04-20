@@ -441,7 +441,18 @@ export default function AccountPage() {
         </div>
 
         <footer className="footer">
-          © {new Date().getFullYear()} Hun-Show • All rights reserved.
+          <div className="footerInner">
+            <div className="footerLinks">
+              <Link href="/" className="footerLink">About</Link>
+              <Link href="/" className="footerLink">Q&amp;A</Link>
+              <Link href="/" className="footerLink">Privacy</Link>
+              <Link href="/" className="footerLink">Contact</Link>
+            </div>
+
+            <div className="footerCopy">
+              © {new Date().getFullYear()} Hun-Show • All rights reserved.
+            </div>
+          </div>
         </footer>
       </main>
     </>

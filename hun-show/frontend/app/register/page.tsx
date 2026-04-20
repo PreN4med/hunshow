@@ -3,8 +3,33 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Header from "@/components/Header";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+function normalizeName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="authInlineIcon">
+      <path
+        d="M19 12H5M5 12L11 6M5 12L11 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -20,93 +45,145 @@ export default function RegisterPage() {
       setError("Please fill in all fields.");
       return;
     }
+
     setLoading(true);
     setError("");
 
     try {
+      const normalizedFirstName = normalizeName(firstName);
+      const normalizedLastName = normalizeName(lastName);
+
       const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName, email, password }),
+        body: JSON.stringify({
+          firstName: normalizedFirstName,
+          lastName: normalizedLastName,
+          email: email.trim().toLowerCase(),
+          password,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Something went wrong");
 
-      // Redirect to a confirmation page
       router.push("/register/confirm");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Registration failed.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
-      <h1>Register</h1>
-      <p style={{ opacity: 0.75 }}>
-        Create your account to start sharing and watching student films.
-      </p>
+    <>
+      <Header page="home" />
 
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        <input
-          placeholder="First Name"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        <input
-          placeholder="Last Name"
-          value={lastName}
-          onChange={(e) => setLastName(e.target.value)}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        <input
-          placeholder="Email (.edu)"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
-        />
-        {error && (
-          <p style={{ color: "red", fontSize: 13, margin: 0 }}>{error}</p>
-        )}
-        <button
-          onClick={handleRegister}
-          disabled={loading}
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Registering..." : "Register"}
-        </button>
-        <Link
-          href="/login"
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            textAlign: "center",
-            fontWeight: 500,
-            cursor: "pointer",
-            backgroundColor: "transparent",
-            display: "block",
-          }}
-        >
-          Back to Login
-        </Link>
-      </div>
-    </main>
+      <main className="container authPage">
+        <section className="authShell">
+          <div className="authCard">
+            <div className="authHeader">
+              <p className="authEyebrow">Join HunShow</p>
+              <h1 className="authTitle">Register</h1>
+              <p className="authSubtitle">
+                Create your account to start sharing and watching student films.
+              </p>
+            </div>
+
+            <div className="authForm">
+              <div className="authFieldGrid">
+                <div className="authField">
+                  <label className="authLabel" htmlFor="register-first-name">
+                    First Name
+                  </label>
+                  <input
+                    id="register-first-name"
+                    className="accountInput authInput"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+
+                <div className="authField">
+                  <label className="authLabel" htmlFor="register-last-name">
+                    Last Name
+                  </label>
+                  <input
+                    id="register-last-name"
+                    className="accountInput authInput"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="authField">
+                <label className="authLabel" htmlFor="register-email">
+                  Email
+                </label>
+                <input
+                  id="register-email"
+                  type="email"
+                  className="accountInput authInput"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="authField">
+                <label className="authLabel" htmlFor="register-password">
+                  Password
+                </label>
+                <input
+                  id="register-password"
+                  type="password"
+                  className="accountInput authInput"
+                  placeholder="Create a password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleRegister()}
+                />
+              </div>
+
+              {error ? <p className="authError">{error}</p> : null}
+
+              <div className="authActions">
+                <button
+                  type="button"
+                  onClick={handleRegister}
+                  disabled={loading}
+                  className="btn btnPrimary authSubmitBtn"
+                >
+                  <span>{loading ? "Registering..." : "Register"}</span>
+                </button>
+
+                <Link href="/login" className="btn btnGhost authSecondaryBtn">
+                  <ArrowLeftIcon />
+                  <span>Back to Login</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer className="footer">
+          <div className="footerInner">
+            <div className="footerLinks">
+              <Link href="/" className="footerLink">About</Link>
+              <Link href="/" className="footerLink">Q&amp;A</Link>
+              <Link href="/" className="footerLink">Privacy</Link>
+              <Link href="/" className="footerLink">Contact</Link>
+            </div>
+
+            <div className="footerCopy">
+              © {new Date().getFullYear()} Hun-Show • All rights reserved.
+            </div>
+          </div>
+        </footer>
+      </main>
+    </>
   );
 }
