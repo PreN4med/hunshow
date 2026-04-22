@@ -45,11 +45,7 @@ export class StreamController {
     try {
       await this.streamService.processChunk(streamId, chunk.buffer);
       return { success: true };
-    } catch (error) {
-      console.error(
-        `[StreamController] Error processing chunk for ${streamId}:`,
-        error,
-      );
+    } catch {
       throw new InternalServerErrorException('Failed to process video chunk');
     }
   }
@@ -75,22 +71,13 @@ export class StreamController {
     @Res() res: express.Response,
   ) {
     const segments = await this.streamService.getPlaylistSegments(streamId);
-
-    if (!segments || segments.length === 0) {
+    if (!segments || segments.length === 0)
       return res.status(404).send('No segments yet');
-    }
-
-    if (!publicUrl) {
-      return res
-        .status(500)
-        .send('Server configuration error: R2_PUBLIC_URL not set');
-    }
+    if (!publicUrl) return res.status(500).send('R2_PUBLIC_URL not set');
 
     const baseUrl = publicUrl.endsWith('/')
       ? publicUrl.slice(0, -1)
       : publicUrl;
-
-    // Sliding window: show the last 6 segments for the HLS player
     const windowSize = 6;
     const window = segments.slice(-windowSize);
     const mediaSequence = Math.max(0, segments.length - windowSize);
@@ -98,12 +85,12 @@ export class StreamController {
     const manifest = [
       '#EXTM3U',
       '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:2', // MATCHES -hls_time 2 in StreamService DO NOT TOUCH
+      '#EXT-X-TARGETDURATION:2', // Matches StreamService
       `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
     window.forEach((seg) => {
-      manifest.push('#EXTINF:2.0,'); // MATCHES -hls_time 2 DO NOT TOUCH
+      manifest.push('#EXTINF:2.0,');
       manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
 
