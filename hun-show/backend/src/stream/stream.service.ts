@@ -47,8 +47,8 @@ export class StreamService {
       .input(stdinStream)
       .inputOptions(['-re'])
       .outputOptions([
-        '-c:v copy', // Use browser-encoded H.264
-        '-c:a aac', // Ensure audio compatibility
+        '-c:v copy',
+        '-c:a aac',
         '-f hls',
         '-hls_time 2',
         '-hls_list_size 10',
@@ -57,9 +57,7 @@ export class StreamService {
         path.join(tmpDir, 'seg-%d.ts'),
       ])
       .output(path.join(tmpDir, 'playlist.m3u8'))
-      .on('start', (cmd) =>
-        console.log(`FFmpeg started for ${streamId}. Command: ${cmd}`),
-      )
+      .on('start', () => console.log(`FFmpeg started for ${streamId}`))
       .on('error', (err) => console.error(`FFmpeg error: ${err.message}`));
 
     command.run();
@@ -78,7 +76,6 @@ export class StreamService {
     const interval = setInterval(() => {
       (async () => {
         if (!fs.existsSync(tmpDir)) return;
-
         const files = fs
           .readdirSync(tmpDir)
           .filter((f) => f.endsWith('.ts'))
@@ -93,31 +90,25 @@ export class StreamService {
 
         for (const file of files) {
           const seq = parseInt(file.match(/seg-(\d+)\.ts/)?.[1] || '-1');
-
           if (seq > currentMaxSeq && files.includes(`seg-${seq + 1}.ts`)) {
             const filePath = path.join(tmpDir, file);
             const buffer = fs.readFileSync(filePath);
-
             await this.r2.uploadBuffer(
               buffer,
               `streams/${streamId}/${file}`,
               'video/mp2t',
             );
             await this.redis.rpush(`playlist:${streamId}`, file);
-
             this.uploadedSegments.set(streamId, seq);
             try {
               fs.unlinkSync(filePath);
             } catch {
-              // Silently ignore cleanup errors
+              /* ignore */
             }
           }
         }
-      })().catch((err) => {
-        console.error(`Uploader error for stream ${streamId}:`, err);
-      });
+      })().catch((err) => console.error(`Uploader error:`, err));
     }, 1000);
-
     this.uploadIntervals.set(streamId, interval);
   }
 
@@ -128,7 +119,6 @@ export class StreamService {
       stream.command.kill('SIGKILL');
       this.activeStreams.delete(streamId);
     }
-
     const interval = this.uploadIntervals.get(streamId);
     if (interval) clearInterval(interval);
 
@@ -136,10 +126,10 @@ export class StreamService {
     await this.redis.srem('active-streams', streamId);
 
     setTimeout(() => {
-      this.cleanupR2Segments(streamId).catch((err) => {
-        console.error(`Cleanup failed for stream ${streamId}:`, err);
-      });
-    }, 10000); // maybe extend this to 30000 for 30 seconds of delay
+      this.cleanupR2Segments(streamId).catch((err) =>
+        console.error('Cleanup error:', err),
+      );
+    }, 10000);
   }
 
   private async cleanupR2Segments(streamId: string): Promise<void> {
@@ -147,7 +137,6 @@ export class StreamService {
     for (const key of keys) await this.r2.deleteFile(key);
   }
 
-  // Common methods
   async getPlaylistSegments(id: string) {
     return this.redis.lrange(`playlist:${id}`, 0, -1);
   }
@@ -165,7 +154,7 @@ export class StreamService {
   }
   async removeViewer(id: string) {
     const c = await this.redis.hincrby(`stream:${id}`, 'viewerCount', -1);
-    return Math.max(0, c);
+    return Math.max(0, Number(c));
   }
   async saveChatMessage(id: string, msg: any) {
     await this.redis.lpush(`chat:${id}`, JSON.stringify(msg));

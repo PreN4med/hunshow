@@ -55,7 +55,6 @@ export default function BroadcastPage() {
       const data = await res.json();
       setStreamId(data.streamId);
 
-      // Force H.264 so the server doesn't have to transcode
       const options = { mimeType: "video/webm;codecs=h264" };
       const actualOptions = MediaRecorder.isTypeSupported(options.mimeType)
         ? options
@@ -67,7 +66,7 @@ export default function BroadcastPage() {
       );
       mediaRecorderRef.current = mediaRecorder;
 
-      mediaRecorder.ondataavailable = async (event) => {
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           const formData = new FormData();
           formData.append("chunk", event.data);
@@ -80,7 +79,6 @@ export default function BroadcastPage() {
         }
       };
 
-      // Send a chunk every 1 second
       mediaRecorder.start(1000);
       setStreaming(true);
       setError("");
@@ -108,7 +106,12 @@ export default function BroadcastPage() {
             placeholder="Stream Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              color: "black",
+            }}
           />
         )}
         {error && <p style={{ color: "red" }}>{error}</p>}
@@ -119,6 +122,33 @@ export default function BroadcastPage() {
           playsInline
           style={{ width: "100%", borderRadius: 10, background: "#000" }}
         />
+
+        {streaming && streamId && (
+          <div
+            style={{
+              padding: 15,
+              background: "#f0f9ff",
+              borderRadius: 10,
+              border: "1px solid #bae6fd",
+            }}
+          >
+            <p style={{ fontSize: 14, color: "#0369a1", margin: 0 }}>
+              <strong>Live Now!</strong> Share this link:
+            </p>
+            <code
+              style={{
+                display: "block",
+                marginTop: 8,
+                wordBreak: "break-all",
+                color: "#0c4a6e",
+              }}
+            >
+              https://hunshow.vercel.app/stream/watch/
+              {streamId}
+            </code>
+          </div>
+        )}
+
         {!streaming ? (
           <button
             onClick={handleGoLive}
@@ -128,6 +158,7 @@ export default function BroadcastPage() {
               color: "white",
               borderRadius: 10,
               cursor: "pointer",
+              fontWeight: "bold",
             }}
           >
             Go Live
