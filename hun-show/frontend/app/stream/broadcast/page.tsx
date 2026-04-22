@@ -12,40 +12,73 @@ export default function BroadcastPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
   const [streaming, setStreaming] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
-  const [viewerCount, setViewerCount] = useState(0);
   const [error, setError] = useState("");
+
+  // Track which source is active: null (none), 'camera', or 'screen'
+  const [activeSource, setActiveSource] = useState<"camera" | "screen" | null>(
+    null,
+  );
 
   useEffect(() => {
     socketRef.current = io(`${API_URL}/stream`);
-    socketRef.current.on("viewer-count", ({ count }: { count: number }) => {
-      setViewerCount(count);
-    });
-
-    async function setupCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true,
-        });
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      } catch (err) {
-        setError("Could not access camera/microphone.");
-      }
-    }
-    setupCamera();
-
     return () => {
       socketRef.current?.disconnect();
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      stopMedia();
     };
   }, []);
 
+  const stopMedia = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const selectSource = async (type: "camera" | "screen") => {
+    try {
+      setError("");
+      stopMedia(); // Clear previous stream before starting new one
+
+      let stream: MediaStream;
+      if (type === "screen") {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: { ideal: 30 } },
+          audio: true,
+        });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: true,
+        });
+      }
+
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setActiveSource(type);
+
+      // Handle user clicking "Stop Sharing" on browser UI
+      stream.getVideoTracks()[0].onended = () => {
+        if (streaming) handleEndStream();
+        else {
+          stopMedia();
+          setActiveSource(null);
+        }
+      };
+    } catch (err) {
+      console.error(err);
+      setError(`Failed to access ${type}. It may be blocked or unsupported.`);
+    }
+  };
+
   const handleGoLive = async () => {
     if (!title) return setError("Please enter a title");
+    if (!streamRef.current)
+      return setError("Please select a camera or screen first");
+
     try {
       const res = await fetch(`${API_URL}/stream/start`, {
         method: "POST",
@@ -60,10 +93,7 @@ export default function BroadcastPage() {
         ? options
         : { mimeType: "video/webm" };
 
-      const mediaRecorder = new MediaRecorder(
-        streamRef.current!,
-        actualOptions,
-      );
+      const mediaRecorder = new MediaRecorder(streamRef.current, actualOptions);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -71,7 +101,6 @@ export default function BroadcastPage() {
           const formData = new FormData();
           formData.append("chunk", event.data);
           formData.append("streamId", data.streamId);
-
           fetch(`${API_URL}/stream/chunk`, {
             method: "POST",
             body: formData,
@@ -81,7 +110,6 @@ export default function BroadcastPage() {
 
       mediaRecorder.start(1000);
       setStreaming(true);
-      setError("");
       socketRef.current?.emit("join-stream", { streamId: data.streamId });
     } catch (err) {
       setError("Failed to start stream.");
@@ -91,36 +119,77 @@ export default function BroadcastPage() {
   const handleEndStream = () => {
     mediaRecorderRef.current?.stop();
     setStreaming(false);
-    if (streamId) {
-      socketRef.current?.emit("end-stream", { streamId });
-      router.push("/");
-    }
+    stopMedia();
+    router.push("/");
   };
 
   return (
-    <main style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
+    <main
+      style={{ padding: 20, maxWidth: 800, margin: "0 auto", color: "black" }}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        <h1>Broadcast Live</h1>
+        <h1>Broadcast Studio</h1>
+
         {!streaming && (
-          <input
-            placeholder="Stream Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              color: "black",
-            }}
-          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+            <input
+              placeholder="Enter Stream Title..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                border: "1px solid #ccc",
+              }}
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => selectSource("camera")}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  border: "none",
+                  background: activeSource === "camera" ? "#22c55e" : "#e5e7eb",
+                  color: activeSource === "camera" ? "white" : "black",
+                }}
+              >
+                Use Camera
+              </button>
+              <button
+                onClick={() => selectSource("screen")}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  border: "none",
+                  background: activeSource === "screen" ? "#22c55e" : "#e5e7eb",
+                  color: activeSource === "screen" ? "white" : "black",
+                }}
+              >
+                Share Screen
+              </button>
+            </div>
+          </div>
         )}
-        {error && <p style={{ color: "red" }}>{error}</p>}
+
+        {error && <p style={{ color: "red", fontWeight: "bold" }}>{error}</p>}
+
+        {/* Mirror the video ONLY if it's the camera */}
         <video
           ref={videoRef}
           autoPlay
           muted
           playsInline
-          style={{ width: "100%", borderRadius: 10, background: "#000" }}
+          style={{
+            width: "100%",
+            borderRadius: 10,
+            background: "#000",
+            transform: activeSource === "camera" ? "scaleX(-1)" : "none",
+          }}
         />
 
         {streaming && streamId && (
@@ -133,16 +202,9 @@ export default function BroadcastPage() {
             }}
           >
             <p style={{ fontSize: 14, color: "#0369a1", margin: 0 }}>
-              <strong>Live Now!</strong> Share this link:
+              <strong>Live Now!</strong> URL:
             </p>
-            <code
-              style={{
-                display: "block",
-                marginTop: 8,
-                wordBreak: "break-all",
-                color: "#0c4a6e",
-              }}
-            >
+            <code style={{ wordBreak: "break-all" }}>
               https://hunshow.vercel.app/stream/watch/
               {streamId}
             </code>
@@ -151,17 +213,19 @@ export default function BroadcastPage() {
 
         {!streaming ? (
           <button
+            disabled={!activeSource}
             onClick={handleGoLive}
             style={{
-              padding: 12,
-              background: "red",
+              padding: 15,
+              background: activeSource ? "red" : "#ccc",
               color: "white",
               borderRadius: 10,
-              cursor: "pointer",
+              cursor: activeSource ? "pointer" : "not-allowed",
               fontWeight: "bold",
+              border: "none",
             }}
           >
-            Go Live
+            {activeSource ? "Go Live" : "Select a Source to Start"}
           </button>
         ) : (
           <button
