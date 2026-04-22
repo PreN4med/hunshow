@@ -47,7 +47,7 @@ export default function BroadcastPage() {
       if (type === "screen") {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: {
-            frameRate: { min: 20, ideal: 30, max: 30 },
+            frameRate: { ideal: 30 },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
