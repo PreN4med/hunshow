@@ -46,7 +46,11 @@ export default function BroadcastPage() {
       let stream: MediaStream;
       if (type === "screen") {
         stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: { ideal: 30 } },
+          video: {
+            frameRate: { min: 20, ideal: 30, max: 30 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           audio: true,
         });
       } else {
@@ -88,10 +92,13 @@ export default function BroadcastPage() {
       const data = await res.json();
       setStreamId(data.streamId);
 
-      const options = { mimeType: "video/webm;codecs=h264" };
+      const options = {
+        mimeType: "video/webm;codecs=h264",
+        videoBitsPerSecond: 3000000,
+      };
       const actualOptions = MediaRecorder.isTypeSupported(options.mimeType)
         ? options
-        : { mimeType: "video/webm" };
+        : { mimeType: "video/webm", videoBitsPerSecond: 3000000 };
 
       const mediaRecorder = new MediaRecorder(streamRef.current, actualOptions);
       mediaRecorderRef.current = mediaRecorder;
