@@ -64,12 +64,6 @@ export class StreamController {
     return this.streamService.getStream(id);
   }
 
-  @Get(':id/playlist')
-  async getPlaylistUrl(@Param('id') id: string) {
-    const url = await this.streamService.getPlaylistUrl(id);
-    return { url };
-  }
-
   @Get(':id/chat')
   async getChatHistory(@Param('id') id: string) {
     return this.streamService.getChatHistory(id);
@@ -96,25 +90,20 @@ export class StreamController {
       ? publicUrl.slice(0, -1)
       : publicUrl;
 
-    const windowSize = 10;
+    // Sliding window: show the last 6 segments for the HLS player
+    const windowSize = 6;
     const window = segments.slice(-windowSize);
     const mediaSequence = Math.max(0, segments.length - windowSize);
 
     const manifest = [
       '#EXTM3U',
       '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:4',
+      '#EXT-X-TARGETDURATION:2', // MATCHES -hls_time 2 in StreamService DO NOT TOUCH
       `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
-    let prevSeq = mediaSequence - 1;
-    window.forEach((seg, i) => {
-      const currentSeq = mediaSequence + i;
-      if (currentSeq !== prevSeq + 1) {
-        manifest.push('#EXT-X-DISCONTINUITY');
-      }
-      prevSeq = currentSeq;
-      manifest.push('#EXTINF:3.0,');
+    window.forEach((seg) => {
+      manifest.push('#EXTINF:2.0,'); // MATCHES -hls_time 2 DO NOT TOUCH
       manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
     });
 
