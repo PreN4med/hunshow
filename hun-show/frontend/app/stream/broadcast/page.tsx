@@ -53,6 +53,10 @@ export default function BroadcastPage() {
           },
           audio: true,
         });
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack && "contentHint" in videoTrack) {
+          (videoTrack as any).contentHint = "motion";
+        }
       } else {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 1280, height: 720 },
@@ -115,7 +119,7 @@ export default function BroadcastPage() {
         }
       };
 
-      mediaRecorder.start(1000);
+      mediaRecorder.start(500);
       setStreaming(true);
       socketRef.current?.emit("join-stream", { streamId: data.streamId });
     } catch (err) {
