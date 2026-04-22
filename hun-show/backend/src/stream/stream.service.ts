@@ -4,15 +4,17 @@ import { R2Service } from '../r2/r2.service';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { PassThrough } from 'stream';
 import ffmpeg = require('fluent-ffmpeg');
 
 @Injectable()
 export class StreamService {
-  private activeProcesses: Map<string, ffmpeg.FfmpegCommand> = new Map();
-  private chunkBuffers: Map<string, Buffer[]> = new Map();
-  private streamHeaders: Map<string, Buffer> = new Map();
-  private pendingSegments: Map<string, boolean> = new Map();
-  private segmentOffsets: Map<string, number> = new Map();
+  private activeStreams: Map<
+    string,
+    { command: ffmpeg.FfmpegCommand; stdin: PassThrough }
+  > = new Map();
+  private uploadIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private uploadedSegments: Map<string, number> = new Map();
 
   constructor(
     private readonly redis: RedisService,
@@ -25,8 +27,8 @@ export class StreamService {
     title: string,
   ): Promise<void> {
     const tmpDir = path.join(os.tmpdir(), `stream-${streamId}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    this.chunkBuffers.set(streamId, []);
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
     await this.redis.hset(`stream:${streamId}`, {
       streamId,
       userId,
@@ -35,218 +37,142 @@ export class StreamService {
       viewerCount: 0,
       status: 'live',
       tmpDir,
-      chunkCount: 0,
     });
     await this.redis.sadd('active-streams', streamId);
-    await this.redis.expire(`stream:${streamId}`, 86400);
+
+    const stdinStream = new PassThrough();
+    this.uploadedSegments.set(streamId, -1);
+
+    const command = ffmpeg()
+      .input(stdinStream)
+      .inputOptions(['-re'])
+      .outputOptions([
+        '-c:v copy', // Use browser-encoded H.264
+        '-c:a aac', // Ensure audio compatibility
+        '-f hls',
+        '-hls_time 2',
+        '-hls_list_size 10',
+        '-hls_flags delete_segments',
+        '-hls_segment_filename',
+        path.join(tmpDir, 'seg-%d.ts'),
+      ])
+      .output(path.join(tmpDir, 'playlist.m3u8'))
+      .on('start', (cmd) =>
+        console.log(`FFmpeg started for ${streamId}. Command: ${cmd}`),
+      )
+      .on('error', (err) => console.error(`FFmpeg error: ${err.message}`));
+
+    command.run();
+    this.activeStreams.set(streamId, { command, stdin: stdinStream });
+    this.startUploader(streamId, tmpDir);
   }
 
   async processChunk(streamId: string, chunkBuffer: Buffer): Promise<void> {
-    const streamData = await this.redis.hgetall(`stream:${streamId}`);
-    if (!streamData?.tmpDir) return;
+    const stream = this.activeStreams.get(streamId);
+    if (stream) {
+      stream.stdin.write(chunkBuffer);
+    }
+  }
 
-    const tmpDir = streamData.tmpDir;
-    const inputFile = path.join(tmpDir, 'input.webm');
+  private startUploader(streamId: string, tmpDir: string) {
+    const interval = setInterval(() => {
+      (async () => {
+        if (!fs.existsSync(tmpDir)) return;
 
-    fs.appendFileSync(inputFile, chunkBuffer);
+        const files = fs
+          .readdirSync(tmpDir)
+          .filter((f) => f.endsWith('.ts'))
+          .sort((a, b) => {
+            return (
+              parseInt(a.match(/\d+/)?.[0] || '0') -
+              parseInt(b.match(/\d+/)?.[0] || '0')
+            );
+          });
 
-    const chunkCount = await this.redis.hincrby(
-      `stream:${streamId}`,
-      'chunkCount',
-      1,
-    );
+        const currentMaxSeq = this.uploadedSegments.get(streamId) ?? -1;
 
-    if (chunkCount % 6 === 0) {
-      if (!this.activeProcesses.has(streamId)) {
-        await this.generateHLSSegment(streamId, tmpDir, inputFile);
-        // If data accumulated while we were processing, do one more pass
-        if (this.pendingSegments.get(streamId)) {
-          this.pendingSegments.delete(streamId);
-          await this.generateHLSSegment(streamId, tmpDir, inputFile);
+        for (const file of files) {
+          const seq = parseInt(file.match(/seg-(\d+)\.ts/)?.[1] || '-1');
+
+          if (seq > currentMaxSeq && files.includes(`seg-${seq + 1}.ts`)) {
+            const filePath = path.join(tmpDir, file);
+            const buffer = fs.readFileSync(filePath);
+
+            await this.r2.uploadBuffer(
+              buffer,
+              `streams/${streamId}/${file}`,
+              'video/mp2t',
+            );
+            await this.redis.rpush(`playlist:${streamId}`, file);
+
+            this.uploadedSegments.set(streamId, seq);
+            try {
+              fs.unlinkSync(filePath);
+            } catch {
+              // Silently ignore cleanup errors
+            }
+          }
         }
-      } else {
-        this.pendingSegments.set(streamId, true);
-      }
-    }
-  }
+      })().catch((err) => {
+        console.error(`Uploader error for stream ${streamId}:`, err);
+      });
+    }, 1000);
 
-  private extractWebMHeader(data: Buffer): Buffer {
-    // WebM Cluster EBML ID: 0x1F43B675 — everything before this is the reusable header
-    const clusterMarker = Buffer.from([0x1f, 0x43, 0xb6, 0x75]);
-    const clusterIdx = data.indexOf(clusterMarker);
-    if (clusterIdx > 0) {
-      return data.slice(0, clusterIdx);
-    }
-    return data;
-  }
-
-  private async generateHLSSegment(
-    streamId: string,
-    tmpDir: string,
-    inputFile: string,
-  ): Promise<void> {
-    const chunkCountStr =
-      (await this.redis.hget(`stream:${streamId}`, 'chunkCount')) || '0';
-    const segmentName = `seg-${chunkCountStr}.ts`;
-    const outputPath = path.join(tmpDir, segmentName);
-    const processingFile = path.join(
-      tmpDir,
-      `processing-${chunkCountStr}.webm`,
-    );
-    const segmentIndex = Math.floor(parseInt(chunkCountStr) / 3);
-    const offsetSeconds = segmentIndex * 3;
-
-    if (!fs.existsSync(inputFile) || fs.statSync(inputFile).size === 0) return;
-
-    const currentData: Buffer = fs.readFileSync(inputFile);
-
-    // Extract and cache only the EBML/Tracks header bytes on first segment
-    if (!this.streamHeaders.has(streamId)) {
-      const header = this.extractWebMHeader(currentData);
-      console.log(
-        `[Stream] Cached WebM header for ${streamId}: ${header.length} bytes`,
-      );
-      this.streamHeaders.set(streamId, header);
-    }
-
-    const header = this.streamHeaders.get(streamId)!;
-
-    // Clear input file before processing so new chunks accumulate cleanly
-    fs.writeFileSync(inputFile, '');
-
-    // Prepend EBML header so ffmpeg can decode this standalone chunk
-    const validWebM: Buffer = Buffer.concat([header, currentData]);
-    fs.writeFileSync(processingFile, validWebM);
-
-    await new Promise<void>((resolve, reject) => {
-      const command = ffmpeg(processingFile)
-        .on('start', (cmdLine) => {
-          console.log(`[FFmpeg] ${streamId}: ${cmdLine}`);
-          this.activeProcesses.set(streamId, command);
-        })
-        .outputOptions([
-          '-c:v libx264',
-          '-preset ultrafast',
-          '-tune zerolatency',
-          '-pix_fmt yuv420p',
-          '-r 30',
-          '-g 60',
-          '-f mpegts',
-          `-output_ts_offset ${offsetSeconds}`,
-        ])
-        .output(outputPath)
-        .on('end', () => {
-          this.activeProcesses.delete(streamId);
-          resolve();
-        })
-        .on('error', (err) => {
-          this.activeProcesses.delete(streamId);
-          console.error(`[FFmpeg] Error for ${streamId}:`, err.message);
-          reject(err);
-        });
-      command.run();
-    });
-
-    if (fs.existsSync(outputPath)) {
-      const buffer = fs.readFileSync(outputPath);
-      await this.r2.uploadBuffer(
-        buffer,
-        `streams/${streamId}/${segmentName}`,
-        'video/mp2t',
-      );
-      await this.redis.rpush(`playlist:${streamId}`, segmentName);
-      console.log(`[Stream] Uploaded ${segmentName} for ${streamId}`);
-      fs.unlinkSync(outputPath);
-    }
-
-    if (fs.existsSync(processingFile)) {
-      fs.unlinkSync(processingFile);
-    }
-  }
-
-  async getPlaylistSegments(streamId: string): Promise<string[]> {
-    return this.redis.lrange(`playlist:${streamId}`, 0, -1);
-  }
-
-  async getPlaylistUrl(streamId: string): Promise<string> {
-    return this.r2.getSignedUrl(`streams/${streamId}/playlist.m3u8`);
+    this.uploadIntervals.set(streamId, interval);
   }
 
   async endStream(streamId: string): Promise<void> {
-    const activeProc = this.activeProcesses.get(streamId);
-    if (activeProc) {
-      console.log(`[Cleanup] Killing active FFmpeg process for ${streamId}`);
-      try {
-        activeProc.kill('SIGKILL');
-      } catch (e) {
-        console.error('Error killing process:', e);
-      }
-      this.activeProcesses.delete(streamId);
+    const stream = this.activeStreams.get(streamId);
+    if (stream) {
+      stream.stdin.end();
+      stream.command.kill('SIGKILL');
+      this.activeStreams.delete(streamId);
     }
+
+    const interval = this.uploadIntervals.get(streamId);
+    if (interval) clearInterval(interval);
 
     await this.redis.hset(`stream:${streamId}`, 'status', 'ended');
     await this.redis.srem('active-streams', streamId);
-    await this.cleanupR2Segments(streamId);
 
-    const streamData = await this.redis.hgetall(`stream:${streamId}`);
-    if (streamData?.tmpDir && fs.existsSync(streamData.tmpDir)) {
-      try {
-        fs.rmSync(streamData.tmpDir, { recursive: true, force: true });
-      } catch (e) {
-        console.error('Failed to delete temp directory', e);
-      }
-    }
-
-    this.streamHeaders.delete(streamId);
-    this.pendingSegments.delete(streamId);
-    this.chunkBuffers.delete(streamId);
-    this.segmentOffsets.delete(streamId);
+    setTimeout(() => {
+      this.cleanupR2Segments(streamId).catch((err) => {
+        console.error(`Cleanup failed for stream ${streamId}:`, err);
+      });
+    }, 10000); // maybe extend this to 30000 for 30 seconds of delay
   }
 
   private async cleanupR2Segments(streamId: string): Promise<void> {
-    try {
-      const keys = await this.r2.listFiles(`streams/${streamId}/`);
-      for (const key of keys) {
-        await this.r2.deleteFile(key);
-      }
-    } catch (e) {
-      console.error('R2 Cleanup failed:', e);
-    }
+    const keys = await this.r2.listFiles(`streams/${streamId}/`);
+    for (const key of keys) await this.r2.deleteFile(key);
   }
 
-  async getActiveStreams(): Promise<any[]> {
-    const streamIds = await this.redis.smembers('active-streams');
-    if (!streamIds.length) return [];
-    return Promise.all(
-      streamIds.map(async (id) => this.redis.hgetall(`stream:${id}`)),
-    );
+  // Common methods
+  async getPlaylistSegments(id: string) {
+    return this.redis.lrange(`playlist:${id}`, 0, -1);
   }
-
-  async getStream(streamId: string): Promise<any> {
-    return this.redis.hgetall(`stream:${streamId}`);
+  async getActiveStreams() {
+    const ids = await this.redis.smembers('active-streams');
+    return ids.length
+      ? Promise.all(ids.map((id) => this.redis.hgetall(`stream:${id}`)))
+      : [];
   }
-
-  async addViewer(streamId: string): Promise<number> {
-    return this.redis.hincrby(`stream:${streamId}`, 'viewerCount', 1);
+  async getStream(id: string) {
+    return this.redis.hgetall(`stream:${id}`);
   }
-
-  async removeViewer(streamId: string): Promise<number> {
-    const count = await this.redis.hincrby(
-      `stream:${streamId}`,
-      'viewerCount',
-      -1,
-    );
-    return Math.max(0, count);
+  async addViewer(id: string) {
+    return this.redis.hincrby(`stream:${id}`, 'viewerCount', 1);
   }
-
-  async saveChatMessage(streamId: string, message: any): Promise<void> {
-    await this.redis.lpush(`chat:${streamId}`, JSON.stringify(message));
-    await this.redis.ltrim(`chat:${streamId}`, 0, 99);
-    await this.redis.expire(`chat:${streamId}`, 86400);
+  async removeViewer(id: string) {
+    const c = await this.redis.hincrby(`stream:${id}`, 'viewerCount', -1);
+    return Math.max(0, c);
   }
-
-  async getChatHistory(streamId: string): Promise<any[]> {
-    const messages = await this.redis.lrange(`chat:${streamId}`, 0, -1);
-    return messages.map((m) => JSON.parse(m)).reverse();
+  async saveChatMessage(id: string, msg: any) {
+    await this.redis.lpush(`chat:${id}`, JSON.stringify(msg));
+    await this.redis.ltrim(`chat:${id}`, 0, 99);
+  }
+  async getChatHistory(id: string) {
+    const msgs = await this.redis.lrange(`chat:${id}`, 0, -1);
+    return msgs.map((m) => JSON.parse(m)).reverse();
   }
 }

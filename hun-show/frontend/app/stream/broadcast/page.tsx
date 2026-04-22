@@ -20,139 +20,98 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     socketRef.current = io(`${API_URL}/stream`);
-
     socketRef.current.on("viewer-count", ({ count }: { count: number }) => {
       setViewerCount(count);
-    });
-
-    socketRef.current.on("connect_error", () => {
-      setError("Failed to connect to stream server");
     });
 
     async function setupCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: { width: 1280, height: 720 },
           audio: true,
         });
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        if (videoRef.current) videoRef.current.srcObject = stream;
       } catch (err) {
-        setError(
-          "Could not access camera/microphone. Please allow access and try again.",
-        );
+        setError("Could not access camera/microphone.");
       }
     }
-
     setupCamera();
 
     return () => {
       socketRef.current?.disconnect();
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
-  async function handleGoLive() {
-    if (!title) {
-      setError("Please enter a stream title.");
-      return;
-    }
-
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!user.id) {
-      setError("You must be logged in to stream.");
-      return;
-    }
-
+  const handleGoLive = async () => {
+    if (!title) return setError("Please enter a title");
     try {
       const res = await fetch(`${API_URL}/stream/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, title }),
+        body: JSON.stringify({ userId: "user-123", title }),
       });
-
       const data = await res.json();
       setStreamId(data.streamId);
 
-      socketRef.current?.emit("join-stream", { streamId: data.streamId });
+      // Force H.264 so the server doesn't have to transcode
+      const options = { mimeType: "video/webm;codecs=h264" };
+      const actualOptions = MediaRecorder.isTypeSupported(options.mimeType)
+        ? options
+        : { mimeType: "video/webm" };
 
-      const stream = streamRef.current!;
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9,opus",
-      });
-
+      const mediaRecorder = new MediaRecorder(
+        streamRef.current!,
+        actualOptions,
+      );
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = async (event) => {
-        console.log("Chunk generated, size:", event.data.size);
         if (event.data.size > 0) {
           const formData = new FormData();
-          formData.append("chunk", event.data, "chunk.webm");
+          formData.append("chunk", event.data);
           formData.append("streamId", data.streamId);
 
-          await fetch(`${API_URL}/stream/chunk`, {
+          fetch(`${API_URL}/stream/chunk`, {
             method: "POST",
             body: formData,
           }).catch(console.error);
         }
       };
 
+      // Send a chunk every 1 second
       mediaRecorder.start(1000);
       setStreaming(true);
       setError("");
+      socketRef.current?.emit("join-stream", { streamId: data.streamId });
     } catch (err) {
-      setError("Failed to start stream. Please try again.");
+      setError("Failed to start stream.");
     }
-  }
+  };
 
-  function handleEndStream() {
+  const handleEndStream = () => {
     mediaRecorderRef.current?.stop();
-    socketRef.current?.emit("end-stream", { streamId });
     setStreaming(false);
-    setStreamId(null);
-    router.push("/");
-  }
+    if (streamId) {
+      socketRef.current?.emit("end-stream", { streamId });
+      router.push("/");
+    }
+  };
 
   return (
-    <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <h1>Go Live</h1>
-
-      {/* Always render video element so srcObject is never lost */}
-      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        {streaming && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
-              style={{
-                background: "red",
-                color: "white",
-                padding: "4px 10px",
-                borderRadius: 6,
-                fontWeight: 600,
-                fontSize: 13,
-              }}
-            >
-              LIVE
-            </span>
-            <span style={{ opacity: 0.75, fontSize: 14 }}>
-              {viewerCount} viewers
-            </span>
-          </div>
-        )}
-
+    <main style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <h1>Broadcast Live</h1>
         {!streaming && (
           <input
-            placeholder="Stream title"
+            placeholder="Stream Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             style={{ padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
           />
         )}
-
-        {error && <p style={{ color: "red", fontSize: 13 }}>{error}</p>}
-
-        {/* Single video element — always mounted */}
+        {error && <p style={{ color: "red" }}>{error}</p>}
         <video
           ref={videoRef}
           autoPlay
@@ -160,28 +119,14 @@ export default function BroadcastPage() {
           playsInline
           style={{ width: "100%", borderRadius: 10, background: "#000" }}
         />
-
-        {streaming && streamId && (
-          <p style={{ fontSize: 13, opacity: 0.6 }}>
-            Share this link with viewers:{" "}
-            <strong>
-              https://fall-capstone-499-group-7.vercel.app/stream/watch/
-              {streamId}
-            </strong>
-          </p>
-        )}
-
         {!streaming ? (
           <button
             onClick={handleGoLive}
             style={{
               padding: 12,
-              borderRadius: 10,
-              border: "none",
               background: "red",
               color: "white",
-              fontWeight: 600,
-              fontSize: 16,
+              borderRadius: 10,
               cursor: "pointer",
             }}
           >
@@ -192,8 +137,8 @@ export default function BroadcastPage() {
             onClick={handleEndStream}
             style={{
               padding: 12,
-              borderRadius: 10,
               border: "1px solid #ccc",
+              borderRadius: 10,
               cursor: "pointer",
             }}
           >
