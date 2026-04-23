@@ -290,4 +290,27 @@ export class VideosService {
     await this.videoModel.findByIdAndDelete(id);
     return { message: 'Video deleted successfully' };
   }
+
+  async getLikedVideosByUser(userId: string) {
+    const videos = await this.videoModel.find({ likedBy: userId }).exec();
+
+    return Promise.all(
+      videos.map(async (v) => {
+        const user = await this.userRepo.findOne({
+          where: { id: v.uploadedBy },
+        });
+        return {
+          _id: v._id.toString(),
+          title: v.title,
+          description: v.description,
+          videoUrl: v.videoUrl,
+          uploadedBy: v.uploadedBy,
+          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          createdAt: v.createdAt,
+          likes: v.likedBy?.length || 0,
+          thumbnailUrl: v.thumbnailUrl,
+        };
+      }),
+    );
+  }
 }
