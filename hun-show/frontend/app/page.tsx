@@ -347,9 +347,9 @@ export default function HomePage() {
                   <span>Home</span>
                 </Link>
 
-                <Link href="/" className="sidebarItem">
-                  <SidebarIcon kind="liked" />
-                  <span>Liked Videos</span>
+                <Link href="/liked" className="sidebarItem">
+                    <SidebarIcon kind="liked" />
+                    <span>Liked Videos</span>
                 </Link>
 
                 <Link href="/" className="sidebarItem">
