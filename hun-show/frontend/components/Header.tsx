@@ -300,7 +300,7 @@ export default function Header({ page = "other" }: HeaderProps) {
               <span>Upload</span>
             </Link>
 
-            <Link href="/" className="headerMobileNavItem">
+            <Link href="/liked" className="headerMobileNavItem">
               <HeartIcon />
               <span>Liked Videos</span>
             </Link>

@@ -48,6 +48,11 @@ export class VideosController {
     );
   }
 
+  @Get('liked/:userId')
+  async getLikedVideos(@Param('userId') userId: string) {
+    return this.videosService.getLikedVideosByUser(userId);
+  }
+
   @Get()
   async getAllVideos(@Query('q') query?: string) {
     return this.videosService.findAll(query);
