@@ -32,9 +32,7 @@ function formatPersonName(value = "") {
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
-    .map(
-      (part) => part.charAt(0).toUpperCase() + part.slice(1)
-    )
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
 
@@ -211,7 +209,7 @@ export default function HomePage() {
           "Failed to fetch videos:",
           res.status,
           res.statusText,
-          data
+          data,
         );
         setDbMovies([]);
         return;
@@ -241,7 +239,7 @@ export default function HomePage() {
             videoUrl: v.videoUrl,
             description: v.description || "",
           };
-        })
+        }),
       );
 
       setDbMovies(movies);
@@ -270,7 +268,7 @@ export default function HomePage() {
       movies.sort(
         (a, b) =>
           new Date(b.createdAtRaw || 0).getTime() -
-          new Date(a.createdAtRaw || 0).getTime()
+          new Date(a.createdAtRaw || 0).getTime(),
       );
     }
 
@@ -301,7 +299,7 @@ export default function HomePage() {
     const interval = window.setInterval(() => {
       setFeaturedMovieId((current) => {
         const candidates = displayedMovies.filter(
-          (movie) => movie.id !== current
+          (movie) => movie.id !== current,
         );
         const pool = candidates.length > 0 ? candidates : displayedMovies;
         const randomMovie = pool[Math.floor(Math.random() * pool.length)];
@@ -319,7 +317,7 @@ export default function HomePage() {
         .filter(
           (movie) =>
             movie.title.toLowerCase().includes(searchTermLower) ||
-            movie.creator.toLowerCase().includes(searchTermLower)
+            movie.creator.toLowerCase().includes(searchTermLower),
         )
         .slice(0, 6)
     : [];
@@ -348,11 +346,11 @@ export default function HomePage() {
                 </Link>
 
                 <Link href="/liked" className="sidebarItem">
-                    <SidebarIcon kind="liked" />
-                    <span>Liked Videos</span>
+                  <SidebarIcon kind="liked" />
+                  <span>Liked Videos</span>
                 </Link>
 
-                <Link href="/" className="sidebarItem">
+                <Link href="/stream/broadcast" className="sidebarItem">
                   <SidebarIcon kind="streaming" />
                   <span>Streaming</span>
                 </Link>
@@ -397,7 +395,9 @@ export default function HomePage() {
                         setShowSuggestions(true);
                       }}
                       onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
+                      onBlur={() =>
+                        setTimeout(() => setShowSuggestions(false), 100)
+                      }
                     />
 
                     {showSuggestions && suggestions.length > 0 && (
@@ -407,7 +407,9 @@ export default function HomePage() {
                             type="button"
                             key={movie.id}
                             className="autocompleteItem"
-                            onMouseDown={() => handleSuggestionSelect(movie.title)}
+                            onMouseDown={() =>
+                              handleSuggestionSelect(movie.title)
+                            }
                           >
                             <span>{movie.title}</span>
                             <span className="autocompleteMeta">
@@ -451,7 +453,11 @@ export default function HomePage() {
               <div className="browseHeaderLeft">
                 <h2 className="h2 browseTitle">Browse</h2>
 
-                <div className="browseTabs" role="tablist" aria-label="Browse filters">
+                <div
+                  className="browseTabs"
+                  role="tablist"
+                  aria-label="Browse filters"
+                >
                   <button
                     type="button"
                     className={`browseTab ${activeBrowseTab === "all" ? "browseTabActive" : ""}`}
@@ -478,18 +484,27 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <span className="browseCountPill">{displayedMovies.length} titles</span>
+              <span className="browseCountPill">
+                {displayedMovies.length} titles
+              </span>
             </div>
 
             {displayedMovies.length === 0 ? (
-              <p className="p">No videos match your search. Try a different keyword.</p>
+              <p className="p">
+                No videos match your search. Try a different keyword.
+              </p>
             ) : (
               <>
                 {featuredMovie && (
-                  <Link href={`/watch/${featuredMovie.id}`} className="featuredCard">
+                  <Link
+                    href={`/watch/${featuredMovie.id}`}
+                    className="featuredCard"
+                  >
                     <div className="featuredThumb">
                       <Image
-                        src={featuredMovie.thumbnail || "/thumbnails/default.jpg"}
+                        src={
+                          featuredMovie.thumbnail || "/thumbnails/default.jpg"
+                        }
                         alt={featuredMovie.title}
                         fill
                         style={{
@@ -508,7 +523,9 @@ export default function HomePage() {
                       </p>
                       <p className="featuredMeta">
                         {featuredMovie.creator}
-                        {featuredMovie.createdAt ? ` • ${featuredMovie.createdAt}` : ""}
+                        {featuredMovie.createdAt
+                          ? ` • ${featuredMovie.createdAt}`
+                          : ""}
                       </p>
 
                       <div className="featuredActionRow">
@@ -549,10 +566,18 @@ export default function HomePage() {
             <footer className="footer">
               <div className="footerInner">
                 <div className="footerLinks">
-                  <Link href="/" className="footerLink">About</Link>
-                  <Link href="/" className="footerLink">Q&amp;A</Link>
-                  <Link href="/" className="footerLink">Privacy</Link>
-                  <Link href="/" className="footerLink">Contact</Link>
+                  <Link href="/" className="footerLink">
+                    About
+                  </Link>
+                  <Link href="/" className="footerLink">
+                    Q&amp;A
+                  </Link>
+                  <Link href="/" className="footerLink">
+                    Privacy
+                  </Link>
+                  <Link href="/" className="footerLink">
+                    Contact
+                  </Link>
                 </div>
 
                 <div className="footerCopy">
