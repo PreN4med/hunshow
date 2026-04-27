@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
+import { transcodeToCompatibleMp4 } from './transcode.util';
 
 function escapeRegex(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,7 +38,18 @@ export class VideosService {
       uploadedBy: string;
     },
   ): Promise<VideoDocument> {
-    const videoUrl = await this.r2Service.uploadFile(file, 'videos');
+    const transcodedBuffer = await transcodeToCompatibleMp4(
+      file.buffer,
+      file.originalname,
+    );
+    const transcodedFile: Express.Multer.File = {
+      ...file,
+      buffer: transcodedBuffer,
+      size: transcodedBuffer.length,
+      mimetype: 'video/mp4',
+      originalname: file.originalname.replace(/\.[^.]+$/, '.mp4'),
+    };
+    const videoUrl = await this.r2Service.uploadFile(transcodedFile, 'videos');
 
     let thumbnailUrl: string | undefined;
     if (thumbnail) {
