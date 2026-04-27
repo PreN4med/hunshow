@@ -32,16 +32,17 @@ export class VideosService {
   async uploadVideo(
     file: Express.Multer.File,
     thumbnail: Express.Multer.File | null,
-    metadata: {
-      title: string;
-      description?: string;
-      uploadedBy: string;
-    },
+    metadata: { title: string; description?: string; uploadedBy: string },
   ): Promise<VideoDocument> {
+    const originalBuffer = file.buffer;
+
     const transcodedBuffer = await transcodeToCompatibleMp4(
-      file.buffer,
+      originalBuffer,
       file.originalname,
     );
+
+    (file as any).buffer = null;
+
     const transcodedFile: Express.Multer.File = {
       ...file,
       buffer: transcodedBuffer,
@@ -49,13 +50,14 @@ export class VideosService {
       mimetype: 'video/mp4',
       originalname: file.originalname.replace(/\.[^.]+$/, '.mp4'),
     };
+
     const videoUrl = await this.r2Service.uploadFile(transcodedFile, 'videos');
 
     let thumbnailUrl: string | undefined;
     if (thumbnail) {
       thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
     } else {
-      thumbnailUrl = await this.generateThumbnail(file);
+      thumbnailUrl = await this.generateThumbnail(originalBuffer);
     }
 
     const video = new this.videoModel({
@@ -71,43 +73,64 @@ export class VideosService {
     return video.save();
   }
 
-  private async generateThumbnail(file: Express.Multer.File): Promise<string> {
+  private async generateThumbnail(buffer: Buffer): Promise<string> {
     const tmpDir = os.tmpdir();
-    const tmpVideo = path.join(tmpDir, `${Date.now()}-input.mp4`);
-    const tmpThumb = path.join(tmpDir, `${Date.now()}-thumb.jpg`);
+    const timestamp = Date.now();
+    const tmpVideo = path.join(tmpDir, `${timestamp}-input.mp4`);
+    const tmpThumb = path.join(tmpDir, `${timestamp}-thumb.jpg`);
 
-    fs.writeFileSync(tmpVideo, file.buffer);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const writeStream = fs.createWriteStream(tmpVideo);
+        Readable.from(buffer)
+          .pipe(writeStream)
+          .on('finish', () => resolve())
+          .on('error', (err) => reject(err));
+      });
 
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(tmpVideo)
-        .screenshots({
-          timestamps: ['00:00:01'],
-          filename: path.basename(tmpThumb),
-          folder: tmpDir,
-          size: '640x360',
-        })
-        .on('end', () => resolve())
-        .on('error', (err: Error) => reject(err));
-    });
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(tmpVideo)
+          .screenshots({
+            timestamps: ['00:00:01'],
+            filename: path.basename(tmpThumb),
+            folder: tmpDir,
+            size: '640x360',
+          })
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err));
+      });
 
-    const thumbBuffer = fs.readFileSync(tmpThumb);
-    const thumbFile: Express.Multer.File = {
-      buffer: thumbBuffer,
-      originalname: `thumb-${Date.now()}.jpg`,
-      mimetype: 'image/jpeg',
-      size: thumbBuffer.length,
-      fieldname: 'thumbnail',
-      encoding: '7bit',
-      stream: Readable.from(thumbBuffer),
-      destination: '',
-      filename: '',
-      path: '',
-    };
+      const thumbBuffer = fs.readFileSync(tmpThumb);
+      const thumbFile: Express.Multer.File = {
+        buffer: thumbBuffer,
+        originalname: `thumb-${timestamp}.jpg`,
+        mimetype: 'image/jpeg',
+        size: thumbBuffer.length,
+        fieldname: 'thumbnail',
+        encoding: '7bit',
+        stream: Readable.from(thumbBuffer),
+        destination: '',
+        filename: '',
+        path: '',
+      };
 
-    fs.unlinkSync(tmpVideo);
-    fs.unlinkSync(tmpThumb);
-
-    return this.r2Service.uploadFile(thumbFile, 'thumbnails');
+      return await this.r2Service.uploadFile(thumbFile, 'thumbnails');
+    } finally {
+      if (fs.existsSync(tmpVideo)) {
+        try {
+          fs.unlinkSync(tmpVideo);
+        } catch {
+          // placeholder
+        }
+      }
+      if (fs.existsSync(tmpThumb)) {
+        try {
+          fs.unlinkSync(tmpThumb);
+        } catch {
+          // placeholder
+        }
+      }
+    }
   }
 
   async findAll(search?: string) {
