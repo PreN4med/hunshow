@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
-import { transcodeToCompatibleMp4 } from './transcode.util';
+import { transcodeToCompatibleMp4Path } from './transcode.util';
 
 function escapeRegex(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -34,62 +34,70 @@ export class VideosService {
     thumbnail: Express.Multer.File | null,
     metadata: { title: string; description?: string; uploadedBy: string },
   ): Promise<VideoDocument> {
-    const originalBuffer = file.buffer;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-'));
+    const ext = path.extname(file.originalname) || '.mp4';
+    const inputPath = path.join(tmpDir, `input${ext}`);
+    const transcodedPath = path.join(tmpDir, 'transcoded.mp4');
 
-    const transcodedBuffer = await transcodeToCompatibleMp4(
-      originalBuffer,
-      file.originalname,
-    );
+    try {
+      // Write the Multer buffer to disk once, then free it immediately
+      fs.writeFileSync(inputPath, file.buffer);
+      (file as any).buffer = null;
 
-    (file as any).buffer = null;
+      // Transcode from disk -> disk (no buffers in RAM)
+      await transcodeToCompatibleMp4Path(inputPath, transcodedPath);
 
-    const transcodedFile: Express.Multer.File = {
-      ...file,
-      buffer: transcodedBuffer,
-      size: transcodedBuffer.length,
-      mimetype: 'video/mp4',
-      originalname: file.originalname.replace(/\.[^.]+$/, '.mp4'),
-    };
+      // Upload to R2 by streaming from disk
+      const videoStream = fs.createReadStream(transcodedPath);
+      const transcodedSize = fs.statSync(transcodedPath).size;
+      const videoUrl = await this.r2Service.uploadFile(
+        {
+          ...file,
+          buffer: null as any,
+          stream: videoStream,
+          size: transcodedSize,
+          mimetype: 'video/mp4',
+          originalname: file.originalname.replace(/\.[^.]+$/, '.mp4'),
+        },
+        'videos',
+      );
 
-    const videoUrl = await this.r2Service.uploadFile(transcodedFile, 'videos');
+      let thumbnailUrl: string | undefined;
+      if (thumbnail) {
+        thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
+      } else {
+        // Reuse the already-on-disk transcoded file for thumbnail generation
+        thumbnailUrl = await this.generateThumbnail(transcodedPath);
+      }
 
-    let thumbnailUrl: string | undefined;
-    if (thumbnail) {
-      thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
-    } else {
-      thumbnailUrl = await this.generateThumbnail(originalBuffer);
+      const video = new this.videoModel({
+        title: metadata.title,
+        description: metadata.description,
+        uploadedBy: metadata.uploadedBy,
+        videoUrl,
+        thumbnailUrl,
+        likedBy: [],
+        duration: 0,
+      });
+
+      return video.save();
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // temp cleanup
+      }
     }
-
-    const video = new this.videoModel({
-      title: metadata.title,
-      description: metadata.description,
-      uploadedBy: metadata.uploadedBy,
-      videoUrl,
-      thumbnailUrl,
-      likedBy: [],
-      duration: 0,
-    });
-
-    return video.save();
   }
 
-  private async generateThumbnail(buffer: Buffer): Promise<string> {
+  private async generateThumbnail(videoPath: string): Promise<string> {
     const tmpDir = os.tmpdir();
     const timestamp = Date.now();
-    const tmpVideo = path.join(tmpDir, `${timestamp}-input.mp4`);
     const tmpThumb = path.join(tmpDir, `${timestamp}-thumb.jpg`);
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const writeStream = fs.createWriteStream(tmpVideo);
-        Readable.from(buffer)
-          .pipe(writeStream)
-          .on('finish', () => resolve())
-          .on('error', (err) => reject(err));
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        ffmpeg(tmpVideo)
+        ffmpeg(videoPath)
           .screenshots({
             timestamps: ['00:00:01'],
             filename: path.basename(tmpThumb),
@@ -116,18 +124,11 @@ export class VideosService {
 
       return await this.r2Service.uploadFile(thumbFile, 'thumbnails');
     } finally {
-      if (fs.existsSync(tmpVideo)) {
-        try {
-          fs.unlinkSync(tmpVideo);
-        } catch {
-          // placeholder
-        }
-      }
       if (fs.existsSync(tmpThumb)) {
         try {
           fs.unlinkSync(tmpThumb);
         } catch {
-          // placeholder
+          /* ignore */
         }
       }
     }
