@@ -65,18 +65,12 @@ export class VideosController {
   }
 
   @Get(':id')
-  async getVideo(
-    @Param('id') id: string,
-    @Query('userId') userId?: string,
-  ) {
+  async getVideo(@Param('id') id: string, @Query('userId') userId?: string) {
     return this.videosService.findOne(id, userId);
   }
 
   @Post(':id/like')
-  async toggleLike(
-    @Param('id') id: string,
-    @Body('userId') userId: string,
-  ) {
+  async toggleLike(@Param('id') id: string, @Body('userId') userId: string) {
     if (!userId) throw new BadRequestException('userId is required');
     return this.videosService.toggleLike(id, userId);
   }
