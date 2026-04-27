@@ -2,6 +2,7 @@ import ffmpeg = require('fluent-ffmpeg');
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { Readable } from 'stream';
 
 export async function transcodeToCompatibleMp4(
   inputBuffer: Buffer,
@@ -13,13 +14,19 @@ export async function transcodeToCompatibleMp4(
   const outputPath = path.join(tmpDir, 'output.mp4');
 
   try {
-    fs.writeFileSync(inputPath, inputBuffer);
+    await new Promise<void>((resolve, reject) => {
+      const writeStream = fs.createWriteStream(inputPath);
+      Readable.from(inputBuffer)
+        .pipe(writeStream)
+        .on('finish', () => resolve())
+        .on('error', (err) => reject(err));
+    });
 
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
         .outputOptions([
           '-c:v libx264',
-          '-preset medium',
+          '-preset superfast',
           '-crf 23',
           '-pix_fmt yuv420p',
           '-movflags +faststart',
@@ -36,7 +43,9 @@ export async function transcodeToCompatibleMp4(
     return fs.readFileSync(outputPath);
   } finally {
     try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      if (fs.existsSync(tmpDir)) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     } catch {
       // temp cleanup
     }
