@@ -16,16 +16,6 @@ const API_URL = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 ).replace(/\/$/, "");
 
-async function fetchThumbnailUrl(id: string): Promise<string> {
-  try {
-    const res = await fetch(`${API_URL}/videos/${id}/thumbnail`);
-    const data = await res.json();
-    return data.url || "/thumbnails/default.jpg";
-  } catch {
-    return "/thumbnails/default.jpg";
-  }
-}
-
 function formatPersonName(value = "") {
   return value
     .trim()
@@ -162,6 +152,34 @@ function shuffleMovies<T>(array: T[]): T[] {
   return shuffled;
 }
 
+function makeImageUrl(value?: string | null): string {
+  if (!value) return "/thumbnails/default.jpg";
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  if (value.startsWith("/")) {
+    return `${API_URL}${value}`;
+  }
+
+  return `${API_URL}/${value}`;
+}
+
+async function fetchThumbnailUrl(id: string): Promise<string> {
+  try {
+    const res = await fetch(`${API_URL}/videos/${id}/thumbnail`, {
+      cache: "no-store",
+    });
+
+    const data = await res.json();
+
+    return makeImageUrl(data.url || data.thumbnailUrl);
+  } catch {
+    return "/thumbnails/default.jpg";
+  }
+}
+
 function getVideoDurationLabel(videoUrl?: string): Promise<string> {
   if (!videoUrl) return Promise.resolve("");
 
@@ -244,9 +262,7 @@ export default function HomePage() {
             createdAtRaw: v.createdAt,
             likes: v.likes || 0,
             durationLabel,
-            thumbnail: v.thumbnailUrl
-              ? await fetchThumbnailUrl(v._id)
-              : "/thumbnails/default.jpg",
+            thumbnail: await fetchThumbnailUrl(v._id),
             videoUrl: v.videoUrl,
             description: v.description || "",
           };
@@ -513,11 +529,10 @@ export default function HomePage() {
                   >
                     <div className="featuredThumb">
                       <Image
-                        src={
-                          featuredMovie.thumbnail || "/thumbnails/default.jpg"
-                        }
+                        src={featuredMovie.thumbnail || "/thumbnails/default.jpg"}
                         alt={featuredMovie.title}
                         fill
+                        unoptimized
                         style={{
                           objectFit: "cover",
                           objectPosition: "center 33%",
@@ -559,6 +574,7 @@ export default function HomePage() {
                           src={m.thumbnail || "/thumbnails/default.jpg"}
                           alt={m.title}
                           fill
+                          unoptimized
                           style={{ objectFit: "cover" }}
                         />
                       </div>
