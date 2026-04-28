@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   Body,
   BadRequestException,
@@ -99,4 +100,32 @@ export class StreamController {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.send(manifest.join('\n'));
   }
+
+  @Post(':id/end')
+    async endStreamByParam(@Param('id') streamId: string) {
+      if (!streamId) {
+        throw new BadRequestException('streamId is required');
+      }
+
+      await this.streamService.endStream(streamId);
+
+      return {
+        success: true,
+        message: 'Stream ended',
+      };
+    }
+
+    @Delete(':id')
+    async deleteStream(@Param('id') streamId: string) {
+      if (!streamId) {
+        throw new BadRequestException('streamId is required');
+      }
+
+      await this.streamService.endStream(streamId);
+
+      return {
+        success: true,
+        message: 'Stream deleted',
+      };
+    }
 }

@@ -151,6 +151,17 @@ function formatDuration(value: unknown): string {
   return "";
 }
 
+function shuffleMovies<T>(array: T[]): T[] {
+  const shuffled = [...array];
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const randomIndex = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
 function getVideoDurationLabel(videoUrl?: string): Promise<string> {
   if (!videoUrl) return Promise.resolve("");
 
@@ -242,7 +253,7 @@ export default function HomePage() {
         }),
       );
 
-      setDbMovies(movies);
+      setDbMovies(shuffleMovies(movies));
     } catch (err) {
       console.error("Failed to fetch videos:", err);
       setDbMovies([]);
@@ -350,7 +361,7 @@ export default function HomePage() {
                   <span>Liked Videos</span>
                 </Link>
 
-                <Link href="/stream/broadcast" className="sidebarItem">
+                <Link href="/stream" className="sidebarItem">
                   <SidebarIcon kind="streaming" />
                   <span>Streaming</span>
                 </Link>

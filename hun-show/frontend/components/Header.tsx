@@ -246,6 +246,10 @@ export default function Header({ page = "other" }: HeaderProps) {
                       {getUserInitials(user)}
                     </Link>
 
+                    <Link className="btn headerGoLiveBtn" href="/stream/broadcast">
+                      Go Live
+                    </Link>
+
                     <Link className="btn btnPrimary headerUploadBtn" href="/upload">
                       Upload
                     </Link>
