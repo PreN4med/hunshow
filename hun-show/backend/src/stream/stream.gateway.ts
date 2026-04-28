@@ -25,14 +25,55 @@ export class StreamGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
+  private broadcasterBySocket = new Map<string, string>();
+  private socketByStream = new Map<string, string>();
+
   constructor(private readonly streamService: StreamService) {}
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     console.log(`Client disconnected: ${client.id}`);
+
+    const streamId = this.broadcasterBySocket.get(client.id);
+
+    if (streamId) {
+      console.log(`Broadcaster disconnected. Ending stream: ${streamId}`);
+      await this.endStreamAndNotify(streamId, client.id);
+    }
+  }
+
+  private async endStreamAndNotify(streamId: string, socketId?: string) {
+    const broadcasterSocketId = socketId || this.socketByStream.get(streamId);
+
+    if (broadcasterSocketId) {
+      this.broadcasterBySocket.delete(broadcasterSocketId);
+    }
+
+    this.socketByStream.delete(streamId);
+
+    await this.streamService.endStream(streamId);
+
+    this.server.to(streamId).emit('stream-ended', { streamId });
+  }
+
+  @SubscribeMessage('broadcast-started')
+  async handleBroadcastStarted(
+    @MessageBody() data: { streamId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    if (!data.streamId) {
+      return { success: false };
+    }
+
+    this.broadcasterBySocket.set(client.id, data.streamId);
+    this.socketByStream.set(data.streamId, client.id);
+
+    await client.join(data.streamId);
+
+    return { success: true };
   }
 
   @SubscribeMessage('join-stream')
@@ -74,9 +115,11 @@ export class StreamGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('end-stream')
-  async handleEndStream(@MessageBody() data: { streamId: string }) {
-    await this.streamService.endStream(data.streamId);
-    this.server.to(data.streamId).emit('stream-ended');
+  async handleEndStream(
+    @MessageBody() data: { streamId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    await this.endStreamAndNotify(data.streamId, client.id);
   }
 
   @SubscribeMessage('stream-chunk')
