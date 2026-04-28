@@ -17,6 +17,32 @@ interface HeaderProps {
   page?: string;
 }
 
+function GoLiveIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
+      <rect
+        x="4"
+        y="6"
+        width="12"
+        height="12"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M16 10L20 7.5V16.5L16 14V10Z"
+        fill="currentColor"
+      />
+      <circle cx="8.2" cy="10" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
 function getUserInitials(user: User | null) {
   if (!user) return "U";
 
@@ -26,7 +52,11 @@ function getUserInitials(user: User | null) {
 
   if (fullName) {
     const parts = fullName.split(" ").filter(Boolean);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
 
@@ -39,7 +69,12 @@ function getUserInitials(user: User | null) {
 
 function MenuIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMenuIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMenuIcon"
+    >
       <path
         d="M4 7H20M4 12H20M4 17H20"
         stroke="currentColor"
@@ -52,7 +87,12 @@ function MenuIcon() {
 
 function CloseIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMenuIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMenuIcon"
+    >
       <path
         d="M6 6L18 18M18 6L6 18"
         stroke="currentColor"
@@ -65,7 +105,12 @@ function CloseIcon() {
 
 function HomeIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path
         d="M5 10.5L12 5L19 10.5V18C19 18.55 18.55 19 18 19H14V13H10V19H6C5.45 19 5 18.55 5 18V10.5Z"
         fill="currentColor"
@@ -76,7 +121,12 @@ function HomeIcon() {
 
 function HeartIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path d="M12 20.5L10.55 19.18C5.4 14.5 2 11.41 2 7.61C2 4.52 4.42 2.1 7.51 2.1C9.24 2.1 10.91 2.91 12 4.19C13.09 2.91 14.76 2.1 16.49 2.1C19.58 2.1 22 4.52 22 7.61C22 11.41 18.6 14.5 13.45 19.19L12 20.5Z" />
     </svg>
   );
@@ -84,7 +134,12 @@ function HeartIcon() {
 
 function StreamingIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path
         d="M12 15.5A1.5 1.5 0 1 0 12 18.5A1.5 1.5 0 1 0 12 15.5Z"
         fill="currentColor"
@@ -107,7 +162,12 @@ function StreamingIcon() {
 
 function QaIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path
         d="M7 18.5L4.5 20V7.5C4.5 5.84 5.84 4.5 7.5 4.5H16.5C18.16 4.5 19.5 5.84 19.5 7.5V12.5C19.5 14.16 18.16 15.5 16.5 15.5H9.5L7 18.5Z"
         fill="currentColor"
@@ -125,7 +185,12 @@ function QaIcon() {
 
 function UserIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path
         d="M12 12C14.49 12 16.5 9.99 16.5 7.5C16.5 5.01 14.49 3 12 3C9.51 3 7.5 5.01 7.5 7.5C7.5 9.99 9.51 12 12 12Z"
         fill="currentColor"
@@ -142,7 +207,12 @@ function UserIcon() {
 
 function UploadIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="headerMobileNavIcon">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="headerMobileNavIcon"
+    >
       <path
         d="M12 16V5M12 5L7.5 9.5M12 5L16.5 9.5M5 19H19"
         stroke="currentColor"
@@ -160,6 +230,7 @@ export default function Header({ page = "other" }: HeaderProps) {
   const [loading, setLoading] = useState(true);
   const [showHeader, setShowHeader] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const prevScrollY = useRef(0);
   const pathname = usePathname();
 
@@ -174,7 +245,11 @@ export default function Header({ page = "other" }: HeaderProps) {
         setIsLoggedIn(true);
       } catch {
         setIsLoggedIn(false);
+        setUser(null);
       }
+    } else {
+      setIsLoggedIn(false);
+      setUser(null);
     }
 
     setLoading(false);
@@ -186,6 +261,7 @@ export default function Header({ page = "other" }: HeaderProps) {
 
   useEffect(() => {
     document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+
     return () => {
       document.body.style.overflow = "";
     };
@@ -207,6 +283,7 @@ export default function Header({ page = "other" }: HeaderProps) {
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
+
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
@@ -234,38 +311,72 @@ export default function Header({ page = "other" }: HeaderProps) {
 
           <div className="actions headerActions">
             {!loading && (
-              <div className="headerDesktopActions">
-                {isLoggedIn && user ? (
-                  <>
+              <>
+                <div className="headerDesktopActions">
+                  {isLoggedIn && user ? (
+                    <>
+                      <Link
+                        href="/account"
+                        className="userInitialsBtn"
+                        aria-label="Account"
+                        title="Account"
+                      >
+                        {getUserInitials(user)}
+                      </Link>
+
+                      <Link
+                        className="btn headerGoLiveBtn"
+                        href="/stream/broadcast"
+                      >
+                        Go Live
+                      </Link>
+
+                      <Link
+                        className="btn btnPrimary headerUploadBtn"
+                        href="/upload"
+                      >
+                        Upload
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        className="btn btnGhost headerAccountBtn"
+                        href="/login"
+                      >
+                        Log In
+                      </Link>
+
+                      <Link
+                        className="btn btnPrimary headerUploadBtn"
+                        href="/upload"
+                      >
+                        Upload
+                      </Link>
+                    </>
+                  )}
+                </div>
+
+                <div className="headerMobileQuickAction">
+                  {isLoggedIn && user ? (
                     <Link
                       href="/account"
-                      className="userInitialsBtn"
+                      className="userInitialsBtn headerMobileInitialsBtn"
                       aria-label="Account"
                       title="Account"
                     >
                       {getUserInitials(user)}
                     </Link>
-
-                    <Link className="btn headerGoLiveBtn" href="/stream/broadcast">
-                      Go Live
-                    </Link>
-
-                    <Link className="btn btnPrimary headerUploadBtn" href="/upload">
-                      Upload
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link className="btn btnGhost headerAccountBtn" href="/login">
+                  ) : (
+                    <Link
+                      className="btn btnGhost headerMobileLoginBtn"
+                      href="/login"
+                    >
                       Log In
                     </Link>
-
-                    <Link className="btn btnPrimary headerUploadBtn" href="/upload">
-                      Upload
-                    </Link>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              </>
             )}
 
             <button
@@ -299,6 +410,14 @@ export default function Header({ page = "other" }: HeaderProps) {
               <span>{authLabel}</span>
             </Link>
 
+            <Link
+              href="/stream/broadcast"
+              className="headerMobileNavItem headerMobileGoLiveItem"
+            >
+              <GoLiveIcon />
+              <span>Go Live</span>
+            </Link>
+
             <Link href="/upload" className="headerMobileNavItem">
               <UploadIcon />
               <span>Upload</span>
@@ -309,7 +428,7 @@ export default function Header({ page = "other" }: HeaderProps) {
               <span>Liked Videos</span>
             </Link>
 
-            <Link href="/" className="headerMobileNavItem">
+            <Link href="/stream" className="headerMobileNavItem">
               <StreamingIcon />
               <span>Streaming</span>
             </Link>
