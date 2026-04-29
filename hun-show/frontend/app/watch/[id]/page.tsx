@@ -31,6 +31,18 @@ type SidebarMovie = {
   thumbnail: string;
 };
 
+type Comment = {
+  id: string;
+  content: string;
+  user_id: string;
+  created_at: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+};
+
 async function fetchThumbnailUrl(id: string): Promise<string> {
   try {
     const res = await fetch(`${API_URL}/videos/${id}/thumbnail`);
@@ -133,6 +145,10 @@ export default function WatchPage() {
   const [editedTitle, setEditedTitle] = useState("");
   const [editedDescription, setEditedDescription] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -163,7 +179,7 @@ export default function WatchPage() {
         const urlData = await urlRes.json();
 
         const currentCreator = formatPersonName(
-          data.creatorName || data.uploadedBy || "Unknown creator"
+          data.creatorName || data.uploadedBy || "Unknown creator",
         );
         let thumbnailUrl = "/thumbnails/default.jpg";
         if (data.thumbnailUrl) {
@@ -195,6 +211,9 @@ export default function WatchPage() {
         setEditedDescription(movieFromApi.description);
         setLiked(Boolean(data.likedByCurrentUser));
 
+        // Fetch comments for this video
+        await fetchComments(data._id);
+
         if (startEditing) {
           setIsEditing(true);
         }
@@ -204,7 +223,7 @@ export default function WatchPage() {
 
         if (Array.isArray(allVideosData)) {
           const candidates = allVideosData.filter(
-            (video) => video._id !== data._id
+            (video) => video._id !== data._id,
           );
 
           const enriched = await Promise.all(
@@ -212,21 +231,21 @@ export default function WatchPage() {
               id: video._id,
               title: video.title,
               creator: formatPersonName(
-                video.creatorName || video.uploadedBy || "Unknown creator"
+                video.creatorName || video.uploadedBy || "Unknown creator",
               ),
               createdAt: new Date(video.createdAt).toLocaleDateString("en-US"),
               thumbnail: video.thumbnailUrl
                 ? await fetchThumbnailUrl(video._id)
                 : "/thumbnails/default.jpg",
-            }))
+            })),
           );
 
           const sameCreator = shuffleArray(
-            enriched.filter((video) => video.creator === currentCreator)
+            enriched.filter((video) => video.creator === currentCreator),
           );
 
           const others = shuffleArray(
-            enriched.filter((video) => video.creator !== currentCreator)
+            enriched.filter((video) => video.creator !== currentCreator),
           );
 
           setRelatedMovies([...sameCreator, ...others].slice(0, 4));
@@ -256,7 +275,7 @@ export default function WatchPage() {
 
   const handleDelete = async () => {
     const confirmed = window.confirm(
-      "Are you sure you want to delete this video?"
+      "Are you sure you want to delete this video?",
     );
     if (!confirmed) return;
 
@@ -267,9 +286,12 @@ export default function WatchPage() {
     setDeleting(true);
 
     try {
-      const res = await fetch(`${API_URL}/videos/${id}?userId=${parsedUser.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `${API_URL}/videos/${id}?userId=${parsedUser.id}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       if (!res.ok) {
         const data = await res.json();
@@ -310,7 +332,7 @@ export default function WatchPage() {
             title: editedTitle.trim(),
             description: editedDescription.trim(),
           }),
-        }
+        },
       );
 
       const data = await res.json();
@@ -327,7 +349,7 @@ export default function WatchPage() {
               title: data.title,
               description: data.description || "",
             }
-          : cur
+          : cur,
       );
 
       setIsEditing(false);
@@ -365,6 +387,92 @@ export default function WatchPage() {
     }
   };
 
+  const fetchComments = async (videoId: string) => {
+    setCommentsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/comments/video/${videoId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch comments:", error);
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    const storedUser = localStorage.getItem("user");
+    const currentUserId = storedUser ? JSON.parse(storedUser)?.id : null;
+
+    if (!currentUserId) {
+      router.push("/login");
+      return;
+    }
+
+    if (!newCommentText.trim()) {
+      alert("Please enter a comment");
+      return;
+    }
+
+    setSubmittingComment(true);
+    try {
+      const res = await fetch(`${API_URL}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: currentUserId,
+          videoId: id,
+          content: newCommentText.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        setNewCommentText("");
+        await fetchComments(id);
+      } else {
+        alert("Failed to add comment");
+      }
+    } catch (error) {
+      console.error("Failed to add comment:", error);
+      alert("Failed to add comment");
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    const storedUser = localStorage.getItem("user");
+    const currentUserId = storedUser ? JSON.parse(storedUser)?.id : null;
+
+    if (!currentUserId) return;
+
+    const confirmed = window.confirm("Delete this comment?");
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(
+        `${API_URL}/comments/${commentId}/${currentUserId}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (res.ok) {
+        await fetchComments(id);
+      } else {
+        alert("Failed to delete comment");
+      }
+    } catch (error) {
+      console.error("Failed to delete comment:", error);
+      alert("Failed to delete comment");
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -377,10 +485,18 @@ export default function WatchPage() {
           <footer className="footer">
             <div className="footerInner">
               <div className="footerLinks">
-                <Link href="/" className="footerLink">About</Link>
-                <Link href="/" className="footerLink">Q&amp;A</Link>
-                <Link href="/" className="footerLink">Privacy</Link>
-                <Link href="/" className="footerLink">Contact</Link>
+                <Link href="/" className="footerLink">
+                  About
+                </Link>
+                <Link href="/" className="footerLink">
+                  Q&amp;A
+                </Link>
+                <Link href="/" className="footerLink">
+                  Privacy
+                </Link>
+                <Link href="/" className="footerLink">
+                  Contact
+                </Link>
               </div>
 
               <div className="footerCopy">
@@ -409,10 +525,18 @@ export default function WatchPage() {
           <footer className="footer">
             <div className="footerInner">
               <div className="footerLinks">
-                <Link href="/" className="footerLink">About</Link>
-                <Link href="/" className="footerLink">Q&amp;A</Link>
-                <Link href="/" className="footerLink">Privacy</Link>
-                <Link href="/" className="footerLink">Contact</Link>
+                <Link href="/" className="footerLink">
+                  About
+                </Link>
+                <Link href="/" className="footerLink">
+                  Q&amp;A
+                </Link>
+                <Link href="/" className="footerLink">
+                  Privacy
+                </Link>
+                <Link href="/" className="footerLink">
+                  Contact
+                </Link>
               </div>
 
               <div className="footerCopy">
@@ -519,7 +643,9 @@ export default function WatchPage() {
 
                   <textarea
                     value={editedDescription}
-                    onChange={(event) => setEditedDescription(event.target.value)}
+                    onChange={(event) =>
+                      setEditedDescription(event.target.value)
+                    }
                     rows={5}
                     className="accountInput watchTextarea"
                     placeholder="Description"
@@ -555,6 +681,68 @@ export default function WatchPage() {
                     : "No description added for this video yet."}
                 </p>
               )}
+            </section>
+
+            <section className="watchCommentsCard">
+              <div className="watchSectionHeader">
+                <h2 className="h2">Comments</h2>
+              </div>
+
+              <div className="watchCommentForm">
+                <textarea
+                  value={newCommentText}
+                  onChange={(event) => setNewCommentText(event.target.value)}
+                  rows={3}
+                  className="accountInput watchTextarea"
+                  placeholder="Add a comment..."
+                />
+
+                <button
+                  type="button"
+                  onClick={handleAddComment}
+                  disabled={submittingComment || !newCommentText.trim()}
+                  className="btn btnPrimary"
+                >
+                  {submittingComment ? "Posting..." : "Post Comment"}
+                </button>
+              </div>
+
+              <div className="watchCommentsList">
+                {commentsLoading ? (
+                  <p className="accountMuted">Loading comments...</p>
+                ) : comments.length === 0 ? (
+                  <p className="accountMuted">
+                    No comments yet. Be the first to comment!
+                  </p>
+                ) : (
+                  comments.map((comment) => (
+                    <div key={comment.id} className="watchCommentItem">
+                      <div className="watchCommentHeader">
+                        <span className="watchCommentAuthor">
+                          {comment.user?.name || "Anonymous"}
+                        </span>
+                        <span className="watchCommentDate">
+                          {new Date(comment.created_at).toLocaleDateString(
+                            "en-US",
+                          )}
+                        </span>
+                      </div>
+
+                      <p className="watchCommentText">{comment.content}</p>
+
+                      {userId === comment.user_id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteComment(comment.id)}
+                          className="watchCommentDeleteBtn"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </section>
           </section>
 
@@ -599,10 +787,18 @@ export default function WatchPage() {
         <footer className="footer">
           <div className="footerInner">
             <div className="footerLinks">
-              <Link href="/" className="footerLink">About</Link>
-              <Link href="/" className="footerLink">Q&amp;A</Link>
-              <Link href="/" className="footerLink">Privacy</Link>
-              <Link href="/" className="footerLink">Contact</Link>
+              <Link href="/" className="footerLink">
+                About
+              </Link>
+              <Link href="/" className="footerLink">
+                Q&amp;A
+              </Link>
+              <Link href="/" className="footerLink">
+                Privacy
+              </Link>
+              <Link href="/" className="footerLink">
+                Contact
+              </Link>
             </div>
 
             <div className="footerCopy">
