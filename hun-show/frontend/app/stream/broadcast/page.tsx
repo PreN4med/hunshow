@@ -279,7 +279,7 @@ export default function BroadcastPage() {
         }).catch(console.error);
       };
 
-      mediaRecorder.start(1000);
+      mediaRecorder.start(2000);
       setStreaming(true);
 
       socketRef.current?.emit("broadcast-started", { streamId: newStreamId });
