@@ -3918,3 +3918,115 @@ img {
     font-size: 14px !important;
   }
 }
+
+.authError {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(220, 38, 38, 0.07);
+  border: 1px solid rgba(220, 38, 38, 0.14);
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* Register confirmation page */
+.confirmCard {
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding-top: 38px;
+}
+
+.confirmIconWrap {
+  width: 68px;
+  height: 68px;
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      90px 60px at 30% 20%,
+      rgba(255, 255, 255, 0.8),
+      transparent 70%
+    ),
+    rgba(112, 61, 168, 0.12);
+  color: var(--p);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 14px 28px rgba(112, 61, 168, 0.12);
+}
+
+.confirmIconSvg {
+  width: 34px;
+  height: 34px;
+}
+
+.confirmHeader {
+  margin-bottom: 0;
+}
+
+.confirmInfoBox {
+  width: 100%;
+  border: 1px solid rgba(112, 61, 168, 0.14);
+  border-radius: 20px;
+  background: rgba(112, 61, 168, 0.055);
+  padding: 16px 18px;
+  text-align: left;
+}
+
+.confirmInfoTitle {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--p);
+}
+
+.confirmInfoText {
+  margin: 0;
+  color: rgba(11, 11, 15, 0.7);
+  line-height: 1.55;
+  font-size: 15px;
+}
+
+.confirmActions {
+  width: 100%;
+  margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .confirmCard {
+    padding-top: 28px;
+  }
+
+  .confirmIconWrap {
+    width: 60px;
+    height: 60px;
+    border-radius: 20px;
+  }
+
+  .confirmIconSvg {
+    width: 30px;
+    height: 30px;
+  }
+
+  .confirmInfoBox {
+    padding: 14px 16px;
+  }
+}
+
+@media (max-width: 460px) {
+  .streamWatchEndedBackBtn {
+    display: none !important;
+  }
+}
+
+.streamPlaySvg {
+  width: 42%;
+  height: 42%;
+  display: block;
+  flex-shrink: 0;
+  transform: translateX(-0.25px);
+}

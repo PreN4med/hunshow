@@ -86,6 +86,22 @@ async function fetchActiveStreams(): Promise<LiveStream[]> {
   return [];
 }
 
+function PlayIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="streamPlaySvg"
+    >
+      <path
+        d="M9 7.75V16.25C9 16.95 9.76 17.38 10.36 17.02L17.18 12.77C17.74 12.42 17.74 11.58 17.18 11.23L10.36 6.98C9.76 6.62 9 7.05 9 7.75Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function SidebarIcon({
   kind,
 }: {
@@ -332,7 +348,7 @@ export default function StreamPage() {
 
                         <div className="streamPreviewCenter streamPreviewCenterSmall">
                           <span className="streamPreviewIcon streamPreviewIconSmall">
-                            ▶
+                            <PlayIcon />
                           </span>
                         </div>
                       </div>

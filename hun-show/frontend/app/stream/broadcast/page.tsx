@@ -121,6 +121,22 @@ export default function BroadcastPage() {
     }
   }
 
+  function PlayIcon() {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        className="streamPlaySvg"
+      >
+        <path
+          d="M9 7.75V16.25C9 16.95 9.76 17.38 10.36 17.02L17.18 12.77C17.74 12.42 17.74 11.58 17.18 11.23L10.36 6.98C9.76 6.62 9 7.05 9 7.75Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+
   function getRecorderOptions(): MediaRecorderOptions {
     const possibleTypes = [
       "video/webm;codecs=vp9,opus",
@@ -263,7 +279,7 @@ export default function BroadcastPage() {
         }).catch(console.error);
       };
 
-      mediaRecorder.start(2000);
+      mediaRecorder.start(1000);
       setStreaming(true);
 
       socketRef.current?.emit("broadcast-started", { streamId: newStreamId });
@@ -336,7 +352,9 @@ export default function BroadcastPage() {
             <div className="broadcastPreviewShell">
               {!activeSource && (
                 <div className="broadcastNoSource">
-                  <div className="broadcastNoSourceIcon">▶</div>
+                  <div className="broadcastNoSourceIcon">
+                    <PlayIcon />
+                  </div>
                   <p>No source selected</p>
                   <span>Select camera or screen to preview your stream.</span>
                 </div>
