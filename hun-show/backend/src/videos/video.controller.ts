@@ -26,7 +26,7 @@ export class VideosController {
         { name: 'thumbnail', maxCount: 1 },
       ],
       {
-        limits: { fileSize: 500 * 1024 * 1024 },
+        limits: { fileSize: 300 * 1024 * 1024 },
       },
     ),
   )
@@ -37,9 +37,17 @@ export class VideosController {
     @Body('description') description: string,
     @Body('uploadedBy') uploadedBy: string,
   ) {
-    if (!files?.file?.[0]) throw new BadRequestException('No file uploaded');
-    if (!title) throw new BadRequestException('Title is required');
-    if (!uploadedBy) throw new BadRequestException('uploadedBy is required');
+    if (!files?.file?.[0]) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    if (!title) {
+      throw new BadRequestException('Title is required');
+    }
+
+    if (!uploadedBy) {
+      throw new BadRequestException('uploadedBy is required');
+    }
 
     return this.videosService.uploadVideo(
       files.file[0],
@@ -58,10 +66,24 @@ export class VideosController {
     return this.videosService.findAll(query);
   }
 
-  // Get all videos uploaded by a specific user (for account page)
   @Get('user/:userId')
   async getVideosByUser(@Param('userId') userId: string) {
     return this.videosService.findByUser(userId);
+  }
+
+  @Get(':id/status')
+  async getVideoStatus(@Param('id') id: string) {
+    return this.videosService.getProcessingStatus(id);
+  }
+
+  @Get(':id/url')
+  async getVideoUrl(@Param('id') id: string) {
+    return this.videosService.getSignedUrl(id);
+  }
+
+  @Get(':id/thumbnail')
+  async getThumbnailUrl(@Param('id') id: string) {
+    return this.videosService.getThumbnailUrl(id);
   }
 
   @Get(':id')
@@ -77,7 +99,10 @@ export class VideosController {
     @Param('id') id: string,
     @Body('userId') userId: string,
   ) {
-    if (!userId) throw new BadRequestException('userId is required');
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
     return this.videosService.toggleLike(id, userId);
   }
 
@@ -88,27 +113,23 @@ export class VideosController {
     @Body('title') title?: string,
     @Body('description') description?: string,
   ) {
-    if (!userId) throw new BadRequestException('userId is required');
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
     if (title === undefined && description === undefined) {
       throw new BadRequestException('Nothing to update');
     }
+
     return this.videosService.updateVideo(id, userId, title, description);
   }
 
-  @Get(':id/url')
-  async getVideoUrl(@Param('id') id: string) {
-    return this.videosService.getSignedUrl(id);
-  }
-
-  @Get(':id/thumbnail')
-  async getThumbnailUrl(@Param('id') id: string) {
-    return this.videosService.getThumbnailUrl(id);
-  }
-
-  // Delete a video - requires userId to verify ownership.
   @Delete(':id')
   async deleteVideo(@Param('id') id: string, @Query('userId') userId: string) {
-    if (!userId) throw new BadRequestException('userId is required');
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
     return this.videosService.delete(id, userId);
   }
 }

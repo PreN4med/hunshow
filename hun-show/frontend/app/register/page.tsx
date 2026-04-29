@@ -31,6 +31,24 @@ function ArrowLeftIcon() {
   );
 }
 
+function cleanRegisterError(message: string) {
+  const lower = message.toLowerCase();
+
+  if (lower.includes("password")) {
+    return "Password must be at least 8 characters and include at least one number, one uppercase letter, one lowercase letter, and one special character.";
+  }
+
+  if (lower.includes("email")) {
+    return "Please enter a valid email address.";
+  }
+
+  if (lower.includes("already") || lower.includes("exists")) {
+    return "An account with this email already exists.";
+  }
+
+  return message || "Registration failed. Please try again.";
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
@@ -68,11 +86,11 @@ export default function RegisterPage() {
       if (!res.ok) throw new Error(data.message || "Something went wrong");
 
       router.push("/register/confirm");
-    } catch (err: any) {
-      setError(err.message || "Registration failed.");
-    } finally {
-      setLoading(false);
-    }
+      } catch (err: any) {
+        setError(cleanRegisterError(err.message || ""));
+      } finally {
+        setLoading(false);
+      }
   }
 
   return (

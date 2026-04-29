@@ -175,6 +175,21 @@ export default function WatchStreamPage() {
     };
   }, [streamId]);
 
+  function PlayIcon() {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        className="streamPlaySvg"
+      >
+        <path
+          d="M9 7.75V16.25C9 16.95 9.76 17.38 10.36 17.02L17.18 12.77C17.74 12.42 17.74 11.58 17.18 11.23L10.36 6.98C9.76 6.62 9 7.05 9 7.75Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
   function handleSendMessage() {
     const cleanMessage = newMessage.trim();
 
@@ -224,7 +239,7 @@ export default function WatchStreamPage() {
                     <div className="streamWatchStateIcon">✓</div>
                     <h2>Stream has ended</h2>
                     <p>This live stream is no longer available.</p>
-                    <Link href="/stream" className="btn btnPrimary">
+                    <Link href="/stream" className="btn btnPrimary streamWatchEndedBackBtn">
                       Back to Streaming
                     </Link>
                   </div>
@@ -232,7 +247,9 @@ export default function WatchStreamPage() {
                   <>
                     {!playlistReady && (
                       <div className="streamWatchState">
-                        <div className="streamWatchStateIcon">▶</div>
+                        <div className="streamWatchStateIcon">
+                          <PlayIcon />
+                        </div>
                         <h2>Waiting for stream to start...</h2>
                         <p>The live video will appear here once it is ready.</p>
                       </div>

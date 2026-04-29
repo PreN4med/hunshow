@@ -1,11 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
+
+const MAX_VIDEO_SIZE = 300 * 1024 * 1024;
+const MAX_THUMBNAIL_SIZE = 50 * 1024 * 1024; 
+
+const ALLOWED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-m4v",
+];
+
+const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".m4v"];
 
 function ArrowLeftIcon() {
   return (
@@ -45,6 +59,27 @@ function UploadIcon() {
   );
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isAllowedVideoFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+
+  const hasAllowedType =
+    !file.type || ALLOWED_VIDEO_TYPES.includes(file.type);
+
+  const hasAllowedExtension = ALLOWED_VIDEO_EXTENSIONS.some((extension) =>
+    lowerName.endsWith(extension),
+  );
+
+  return hasAllowedType || hasAllowedExtension;
+}
+
 export default function UploadPage() {
   const router = useRouter();
 
@@ -56,7 +91,71 @@ export default function UploadPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] || null;
+
+    setError("");
+
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
+
+    if (!isAllowedVideoFile(selectedFile)) {
+      setFile(null);
+      event.target.value = "";
+      setError("Please upload an MP4, MOV, WebM, or M4V video.");
+      return;
+    }
+
+    if (selectedFile.size > MAX_VIDEO_SIZE) {
+      setFile(null);
+      event.target.value = "";
+      setError(
+        `This video is too large. Please upload a video under ${formatFileSize(
+          MAX_VIDEO_SIZE,
+        )}.`,
+      );
+      return;
+    }
+
+    setFile(selectedFile);
+  }
+
+  function handleThumbnailChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedThumbnail = event.target.files?.[0] || null;
+
+    setError("");
+
+    if (!selectedThumbnail) {
+      setThumbnail(null);
+      return;
+    }
+
+    if (!selectedThumbnail.type.startsWith("image/")) {
+      setThumbnail(null);
+      event.target.value = "";
+      setError("Please upload a valid image file for the thumbnail.");
+      return;
+    }
+
+    if (selectedThumbnail.size > MAX_THUMBNAIL_SIZE) {
+      setThumbnail(null);
+      event.target.value = "";
+      setError(
+        `This thumbnail is too large. Please upload an image under ${formatFileSize(
+          MAX_THUMBNAIL_SIZE,
+        )}.`,
+      );
+      return;
+    }
+
+    setThumbnail(selectedThumbnail);
+  }
+
   async function handleUpload() {
+    if (loading) return;
+
     if (!title.trim()) {
       setError("Title is required.");
       return;
@@ -64,6 +163,20 @@ export default function UploadPage() {
 
     if (!file) {
       setError("Please select a video file.");
+      return;
+    }
+
+    if (file.size > MAX_VIDEO_SIZE) {
+      setError(
+        `This video is too large. Please upload a video under ${formatFileSize(
+          MAX_VIDEO_SIZE,
+        )}.`,
+      );
+      return;
+    }
+
+    if (!isAllowedVideoFile(file)) {
+      setError("Please upload an MP4, MOV, WebM, or M4V video.");
       return;
     }
 
@@ -92,15 +205,26 @@ export default function UploadPage() {
         body: formData,
       });
 
-      const data = await res.json();
+      let data: any = {};
+
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
-        throw new Error(data.message || "Upload failed");
+        throw new Error(data.message || "Upload failed.");
       }
 
       setSuccess(true);
     } catch (err: any) {
-      setError(err.message || "Upload failed.");
+      const message =
+        err?.message === "Failed to fetch"
+          ? "Upload failed. The video may be too large, your connection may have dropped, or the server took too long to respond."
+          : err?.message || "Upload failed.";
+
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -136,12 +260,14 @@ export default function UploadPage() {
                   <label className="uploadLabel" htmlFor="upload-title">
                     Title
                   </label>
+
                   <input
                     id="upload-title"
                     className="accountInput uploadInput"
                     placeholder="Enter video title"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    disabled={loading}
+                    onChange={(event) => setTitle(event.target.value)}
                   />
                 </div>
 
@@ -149,12 +275,14 @@ export default function UploadPage() {
                   <label className="uploadLabel" htmlFor="upload-description">
                     Description
                   </label>
+
                   <textarea
                     id="upload-description"
                     className="accountInput uploadTextarea"
                     placeholder="Enter video description"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={loading}
+                    onChange={(event) => setDescription(event.target.value)}
                     rows={5}
                   />
                 </div>
@@ -169,20 +297,27 @@ export default function UploadPage() {
                       <p className="uploadFileName">
                         {file ? file.name : "No video selected yet"}
                       </p>
+
                       <p className="uploadHelper">
-                        Select a video file to upload.
+                        {file
+                          ? `${formatFileSize(file.size)} selected`
+                          : "Select an MP4, MOV, WebM, or M4V video under 150 MB."}
                       </p>
                     </div>
 
                     <input
                       id="upload-video"
                       type="file"
-                      accept="video/*"
+                      accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"
                       className="uploadHiddenInput"
-                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      disabled={loading}
+                      onChange={handleVideoChange}
                     />
 
-                    <label htmlFor="upload-video" className="btn btnGhost uploadFileBtn">
+                    <label
+                      htmlFor="upload-video"
+                      className="btn btnGhost uploadFileBtn"
+                    >
                       Choose Video
                     </label>
                   </div>
@@ -198,8 +333,11 @@ export default function UploadPage() {
                       <p className="uploadFileName">
                         {thumbnail ? thumbnail.name : "No thumbnail selected"}
                       </p>
+
                       <p className="uploadHelper">
-                        Upload a custom thumbnail if you want.
+                        {thumbnail
+                          ? `${formatFileSize(thumbnail.size)} selected`
+                          : "Upload a custom thumbnail if you want."}
                       </p>
                     </div>
 
@@ -208,7 +346,8 @@ export default function UploadPage() {
                       type="file"
                       accept="image/*"
                       className="uploadHiddenInput"
-                      onChange={(e) => setThumbnail(e.target.files?.[0] || null)}
+                      disabled={loading}
+                      onChange={handleThumbnailChange}
                     />
 
                     <label
@@ -222,11 +361,19 @@ export default function UploadPage() {
 
                 {error ? <p className="uploadError">{error}</p> : null}
 
+                {loading ? (
+                  <p className="uploadHelper">
+                    Uploading your video. Please keep this tab open until it
+                    finishes.
+                  </p>
+                ) : null}
+
                 <div className="uploadActions">
                   <button
                     type="button"
                     onClick={() => router.push("/")}
                     className="btn btnGhost uploadBackAction"
+                    disabled={loading}
                   >
                     <ArrowLeftIcon />
                     <span>Back</span>
@@ -246,7 +393,11 @@ export default function UploadPage() {
             ) : (
               <div className="uploadSuccessCard">
                 <div className="uploadSuccessIcon">✓</div>
-                <h2 className="h2 uploadSuccessTitle">Video uploaded successfully</h2>
+
+                <h2 className="h2 uploadSuccessTitle">
+                  Video uploaded successfully
+                </h2>
+
                 <p className="uploadSubtitle uploadSuccessSub">
                   Your upload is now part of HunShow.
                 </p>
@@ -275,12 +426,15 @@ export default function UploadPage() {
               <Link href="/" className="footerLink">
                 About
               </Link>
+
               <Link href="/" className="footerLink">
                 Q&amp;A
               </Link>
+
               <Link href="/" className="footerLink">
                 Privacy
               </Link>
+
               <Link href="/" className="footerLink">
                 Contact
               </Link>

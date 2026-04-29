@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -36,73 +37,278 @@ export class VideosService {
       description?: string;
       uploadedBy: string;
     },
-  ): Promise<VideoDocument> {
-    const videoUrl = await this.r2Service.uploadFile(file, 'videos');
+  ): Promise<{
+    _id: string;
+    title: string;
+    description?: string;
+    uploadedBy: string;
+    status: string;
+    message: string;
+  }> {
+    /*
+      Fast upload flow:
+      1. Save original video to R2.
+      2. Save MongoDB record as "processing".
+      3. Respond quickly.
+      4. Convert in background.
+      5. Mark video as "ready" or "failed".
+    */
+
+    const originalVideoUrl = await this.r2Service.uploadFile(
+      file,
+      'videos-original',
+    );
 
     let thumbnailUrl: string | undefined;
+
     if (thumbnail) {
       thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
-    } else {
-      thumbnailUrl = await this.generateThumbnail(file);
     }
 
     const video = new this.videoModel({
       title: metadata.title,
       description: metadata.description,
       uploadedBy: metadata.uploadedBy,
-      videoUrl,
+      originalVideoUrl,
+      videoUrl: '',
       thumbnailUrl,
       likedBy: [],
       duration: 0,
+      status: 'processing',
+      processingError: '',
     });
 
-    return video.save();
+    const savedVideo = await video.save();
+    const videoId = savedVideo._id.toString();
+
+    /*
+      Start processing after the response cycle.
+      Important: this is an in-process background task.
+      For a bigger production system, BullMQ/Redis queue would be stronger.
+    */
+    setImmediate(() => {
+      this.processVideoInBackground(videoId, file).catch((err) => {
+        console.error(`Background processing failed for ${videoId}:`, err);
+      });
+    });
+
+    return {
+      _id: videoId,
+      title: savedVideo.title,
+      description: savedVideo.description,
+      uploadedBy: savedVideo.uploadedBy,
+      status: savedVideo.status,
+      message: 'Video uploaded. Processing has started.',
+    };
+  }
+
+  private async processVideoInBackground(
+    videoId: string,
+    originalFile: Express.Multer.File,
+  ): Promise<void> {
+    console.log(`Processing started for video ${videoId}`);
+
+    try {
+      await this.videoModel.findByIdAndUpdate(videoId, {
+        status: 'processing',
+        processingError: '',
+      });
+
+      const convertedVideo = await this.transcodeToMp4(originalFile);
+      const convertedVideoUrl = await this.r2Service.uploadFile(
+        convertedVideo,
+        'videos',
+      );
+
+      const duration = await this.getVideoDuration(convertedVideo).catch(
+        () => 0,
+      );
+
+      const currentVideo = await this.videoModel.findById(videoId).exec();
+
+      if (!currentVideo) {
+        console.warn(`Video disappeared before processing finished: ${videoId}`);
+        return;
+      }
+
+      let thumbnailUrl = currentVideo.thumbnailUrl;
+
+      if (!thumbnailUrl) {
+        thumbnailUrl = await this.generateThumbnail(convertedVideo);
+      }
+
+      currentVideo.videoUrl = convertedVideoUrl;
+      currentVideo.thumbnailUrl = thumbnailUrl;
+      currentVideo.duration = duration;
+      currentVideo.status = 'ready';
+      currentVideo.processingError = '';
+
+      await currentVideo.save();
+
+      /*
+        Optional cleanup:
+        Delete the original upload after the converted MP4 is ready.
+        If you want to keep original files, remove this block.
+      */
+      if (currentVideo.originalVideoUrl) {
+        this.r2Service.deleteFile(currentVideo.originalVideoUrl).catch(() => {
+          console.warn(`Could not delete original for video ${videoId}`);
+        });
+      }
+
+      console.log(`Processing finished for video ${videoId}`);
+    } catch (err: any) {
+      const message = err?.message || 'Video processing failed';
+
+      await this.videoModel.findByIdAndUpdate(videoId, {
+        status: 'failed',
+        processingError: message,
+      });
+
+      console.error(`Processing failed for video ${videoId}:`, message);
+    }
+  }
+
+  private async transcodeToMp4(
+    file: Express.Multer.File,
+  ): Promise<Express.Multer.File> {
+    const tmpDir = os.tmpdir();
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+    const inputExtension = path.extname(file.originalname || '') || '.upload';
+    const inputPath = path.join(tmpDir, `${unique}-input${inputExtension}`);
+    const outputPath = path.join(tmpDir, `${unique}-output.mp4`);
+
+    fs.writeFileSync(inputPath, file.buffer);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(inputPath)
+          .outputOptions([
+            '-c:v libx264',
+            '-preset veryfast',
+            '-profile:v baseline',
+            '-level 3.1',
+            '-pix_fmt yuv420p',
+
+            '-c:a aac',
+            '-b:a 128k',
+            '-ar 44100',
+
+            '-movflags +faststart',
+          ])
+          .format('mp4')
+          .save(outputPath)
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err));
+      });
+
+      const outputBuffer = fs.readFileSync(outputPath);
+
+      return {
+        buffer: outputBuffer,
+        originalname: `${path.parse(file.originalname || 'video').name}.mp4`,
+        mimetype: 'video/mp4',
+        size: outputBuffer.length,
+        fieldname: file.fieldname,
+        encoding: file.encoding,
+        stream: Readable.from(outputBuffer),
+        destination: '',
+        filename: '',
+        path: '',
+      };
+    } finally {
+      try {
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+      } catch {
+        // Ignore temporary file cleanup errors
+      }
+    }
   }
 
   private async generateThumbnail(file: Express.Multer.File): Promise<string> {
     const tmpDir = os.tmpdir();
-    const tmpVideo = path.join(tmpDir, `${Date.now()}-input.mp4`);
-    const tmpThumb = path.join(tmpDir, `${Date.now()}-thumb.jpg`);
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+    const tmpVideo = path.join(tmpDir, `${unique}-input.mp4`);
+    const tmpThumb = path.join(tmpDir, `${unique}-thumb.jpg`);
 
     fs.writeFileSync(tmpVideo, file.buffer);
 
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(tmpVideo)
-        .screenshots({
-          timestamps: ['00:00:01'],
-          filename: path.basename(tmpThumb),
-          folder: tmpDir,
-          size: '640x360',
-        })
-        .on('end', () => resolve())
-        .on('error', (err: Error) => reject(err));
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(tmpVideo)
+          .screenshots({
+            timestamps: ['00:00:01'],
+            filename: path.basename(tmpThumb),
+            folder: tmpDir,
+            size: '640x360',
+          })
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err));
+      });
 
-    const thumbBuffer = fs.readFileSync(tmpThumb);
-    const thumbFile: Express.Multer.File = {
-      buffer: thumbBuffer,
-      originalname: `thumb-${Date.now()}.jpg`,
-      mimetype: 'image/jpeg',
-      size: thumbBuffer.length,
-      fieldname: 'thumbnail',
-      encoding: '7bit',
-      stream: Readable.from(thumbBuffer),
-      destination: '',
-      filename: '',
-      path: '',
-    };
+      const thumbBuffer = fs.readFileSync(tmpThumb);
 
-    fs.unlinkSync(tmpVideo);
-    fs.unlinkSync(tmpThumb);
+      const thumbFile: Express.Multer.File = {
+        buffer: thumbBuffer,
+        originalname: `thumb-${Date.now()}.jpg`,
+        mimetype: 'image/jpeg',
+        size: thumbBuffer.length,
+        fieldname: 'thumbnail',
+        encoding: '7bit',
+        stream: Readable.from(thumbBuffer),
+        destination: '',
+        filename: '',
+        path: '',
+      };
 
-    return this.r2Service.uploadFile(thumbFile, 'thumbnails');
+      return this.r2Service.uploadFile(thumbFile, 'thumbnails');
+    } finally {
+      try {
+        if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo);
+        if (fs.existsSync(tmpThumb)) fs.unlinkSync(tmpThumb);
+      } catch {
+        // Ignore temporary file cleanup errors
+      }
+    }
+  }
+
+  private async getVideoDuration(file: Express.Multer.File): Promise<number> {
+    const tmpDir = os.tmpdir();
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const tmpVideo = path.join(tmpDir, `${unique}-duration.mp4`);
+
+    fs.writeFileSync(tmpVideo, file.buffer);
+
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        ffmpeg.ffprobe(tmpVideo, (err, metadata) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          resolve(Math.round(metadata.format.duration || 0));
+        });
+      });
+    } finally {
+      try {
+        if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo);
+      } catch {
+        // Ignore temporary file cleanup errors
+      }
+    }
   }
 
   async findAll(search?: string) {
     const filter: Record<string, any> = {};
+
     if (search?.trim()) {
       const cleaned = search.trim();
       const regex = new RegExp(escapeRegex(cleaned), 'i');
+
       const matchedUsers = await this.userRepo
         .createQueryBuilder('user')
         .where('LOWER(user.firstName) LIKE LOWER(:q)', { q: `%${cleaned}%` })
@@ -129,6 +335,7 @@ export class VideosService {
         const user = await this.userRepo.findOne({
           where: { id: v.uploadedBy },
         });
+
         return {
           _id: v._id.toString(),
           title: v.title,
@@ -140,18 +347,20 @@ export class VideosService {
           duration: v.duration,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
+          status: v.status || 'ready',
+          processingError: v.processingError || '',
         };
       }),
     );
   }
 
-  // Get all videos uploaded by a specific user
   async findByUser(userId: string) {
     const videos = await this.videoModel.find({ uploadedBy: userId }).exec();
 
     return Promise.all(
       videos.map(async (v) => {
         const user = await this.userRepo.findOne({ where: { id: userId } });
+
         return {
           _id: v._id.toString(),
           title: v.title,
@@ -163,6 +372,8 @@ export class VideosService {
           duration: v.duration,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
+          status: v.status || 'ready',
+          processingError: v.processingError || '',
         };
       }),
     );
@@ -171,29 +382,33 @@ export class VideosService {
   async findOne(
     id: string,
     currentUserId?: string,
-  ): Promise<
-    | VideoDocument
-    | {
-        _id: string;
-        title: string;
-        description?: string;
-        videoUrl: string;
-        uploadedBy: string;
-        creatorName: string;
-        createdAt?: Date;
-        duration: number;
-        likes: number;
-        likedByCurrentUser: boolean;
-        thumbnailUrl?: string;
-      }
-  > {
+  ): Promise<{
+    _id: string;
+    title: string;
+    description?: string;
+    videoUrl: string;
+    uploadedBy: string;
+    creatorName: string;
+    createdAt?: Date;
+    duration: number;
+    likes: number;
+    likedByCurrentUser: boolean;
+    thumbnailUrl?: string;
+    status: string;
+    processingError?: string;
+  }> {
     const video = await this.videoModel.findById(id).exec();
-    if (!video) throw new NotFoundException('Video not found');
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
 
     const user = await this.userRepo.findOne({
       where: { id: video.uploadedBy },
     });
+
     const creatorName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+
     const likedByCurrentUser = Boolean(
       currentUserId && video.likedBy?.includes(currentUserId),
     );
@@ -210,6 +425,26 @@ export class VideosService {
       likes: video.likedBy?.length || 0,
       likedByCurrentUser,
       thumbnailUrl: video.thumbnailUrl,
+      status: video.status || 'ready',
+      processingError: video.processingError || '',
+    };
+  }
+
+  async getProcessingStatus(id: string): Promise<{
+    _id: string;
+    status: string;
+    processingError?: string;
+  }> {
+    const video = await this.videoModel.findById(id).exec();
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
+
+    return {
+      _id: video._id.toString(),
+      status: video.status || 'ready',
+      processingError: video.processingError || '',
     };
   }
 
@@ -218,17 +453,22 @@ export class VideosService {
     userId: string,
   ): Promise<{ likes: number; liked: boolean }> {
     const video = await this.videoModel.findById(id).exec();
-    if (!video) throw new NotFoundException('Video not found');
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
 
     const likedBy = video.likedBy || [];
     const alreadyLiked = likedBy.includes(userId);
+
     if (alreadyLiked) {
-      video.likedBy = likedBy.filter((id) => id !== userId);
+      video.likedBy = likedBy.filter((likedUserId) => likedUserId !== userId);
     } else {
       video.likedBy = [...likedBy, userId];
     }
 
     await video.save();
+
     return {
       likes: video.likedBy.length,
       liked: !alreadyLiked,
@@ -236,15 +476,42 @@ export class VideosService {
   }
 
   async getSignedUrl(id: string): Promise<{ url: string }> {
-    const video = await this.findOne(id);
+    const video = await this.videoModel.findById(id).exec();
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
+
+    if (video.status === 'processing') {
+      throw new BadRequestException('Video is still processing');
+    }
+
+    if (video.status === 'failed') {
+      throw new BadRequestException('Video processing failed');
+    }
+
+    if (!video.videoUrl) {
+      throw new BadRequestException('Video file is not ready');
+    }
+
     const url = await this.r2Service.getSignedUrl(video.videoUrl);
+
     return { url };
   }
 
   async getThumbnailUrl(id: string): Promise<{ url: string } | { url: null }> {
-    const video = await this.findOne(id);
-    if (!video.thumbnailUrl) return { url: null };
+    const video = await this.videoModel.findById(id).exec();
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
+
+    if (!video.thumbnailUrl) {
+      return { url: null };
+    }
+
     const url = await this.r2Service.getSignedUrl(video.thumbnailUrl);
+
     return { url };
   }
 
@@ -255,7 +522,10 @@ export class VideosService {
     description?: string,
   ) {
     const video = await this.videoModel.findById(id).exec();
-    if (!video) throw new NotFoundException('Video not found');
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
 
     if (video.uploadedBy !== requestingUserId) {
       throw new ForbiddenException('You can only edit your own videos');
@@ -264,30 +534,44 @@ export class VideosService {
     if (title !== undefined) {
       video.title = title;
     }
+
     if (description !== undefined) {
       video.description = description;
     }
 
     await video.save();
+
     return this.findOne(id, requestingUserId);
   }
 
-  // Delete a video - checks ownership before deleting
   async delete(
     id: string,
     requestingUserId: string,
   ): Promise<{ message: string }> {
     const video = await this.videoModel.findById(id);
-    if (!video) throw new NotFoundException('Video not found');
 
-    // Edge case: only the uploader can delete their own video
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
+
     if (video.uploadedBy !== requestingUserId) {
       throw new ForbiddenException('You can only delete your own videos');
     }
 
-    await this.r2Service.deleteFile(video.videoUrl);
-    if (video.thumbnailUrl) await this.r2Service.deleteFile(video.thumbnailUrl);
+    if (video.videoUrl) {
+      await this.r2Service.deleteFile(video.videoUrl);
+    }
+
+    if (video.originalVideoUrl) {
+      await this.r2Service.deleteFile(video.originalVideoUrl).catch(() => {});
+    }
+
+    if (video.thumbnailUrl) {
+      await this.r2Service.deleteFile(video.thumbnailUrl);
+    }
+
     await this.videoModel.findByIdAndDelete(id);
+
     return { message: 'Video deleted successfully' };
   }
 
@@ -299,6 +583,7 @@ export class VideosService {
         const user = await this.userRepo.findOne({
           where: { id: v.uploadedBy },
         });
+
         return {
           _id: v._id.toString(),
           title: v.title,
@@ -309,6 +594,8 @@ export class VideosService {
           createdAt: v.createdAt,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
+          status: v.status || 'ready',
+          processingError: v.processingError || '',
         };
       }),
     );

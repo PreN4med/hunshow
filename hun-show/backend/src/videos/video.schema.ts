@@ -3,6 +3,8 @@ import { Document } from 'mongoose';
 
 export type VideoDocument = Video & Document;
 
+export type VideoStatus = 'processing' | 'ready' | 'failed';
+
 @Schema({ timestamps: true })
 export class Video {
   @Prop({ required: true })
@@ -19,6 +21,18 @@ export class Video {
 
   @Prop()
   videoUrl: string;
+
+  @Prop()
+  originalVideoUrl: string;
+
+  @Prop({
+    enum: ['processing', 'ready', 'failed'],
+    default: 'processing',
+  })
+  status: VideoStatus;
+
+  @Prop()
+  processingError: string;
 
   @Prop([{ language: String, url: String }])
   subtitles: { language: string; url: string }[];
