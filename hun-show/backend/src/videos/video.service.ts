@@ -17,6 +17,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 
+type VideoProbe = {
+  videoCodec: string;
+  audioCodec: string | null;
+  pixelFormat: string | null;
+  formatName: string;
+  duration: number;
+};
+
 function escapeRegex(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -45,34 +53,78 @@ export class VideosService {
     status: string;
     message: string;
   }> {
+    /*
+      Hybrid upload flow:
 
-    const webSafeVideo = await this.transcodeToWebMp4(file);
+      1. Probe the uploaded video.
+      2. If it is already web-safe MP4/H.264/AAC, save it as ready immediately.
+      3. If it is not web-safe, save the original, create a processing record,
+         return quickly, and convert in the background.
 
-    const uploadedVideoUrl = await this.r2Service.uploadFile(
-      webSafeVideo,
-      'videos',
-    );
+      Important:
+      We never save videoUrl as an empty string.
+      For processing videos, videoUrl starts as originalVideoUrl.
+      When conversion finishes, videoUrl gets replaced by the converted MP4.
+    */
+
+    const probe = await this.probeVideo(file).catch((err) => {
+      console.warn('Video probe failed:', err?.message || err);
+      return null;
+    });
+
+    const isWebSafe = probe
+      ? this.isWebSafeVideo(probe, file.originalname)
+      : false;
+
+    if (isWebSafe) {
+      return this.saveReadyVideo(file, thumbnail, metadata, probe);
+    }
+
+    return this.saveProcessingVideo(file, thumbnail, metadata, probe);
+  }
+
+  private async saveReadyVideo(
+    file: Express.Multer.File,
+    thumbnail: Express.Multer.File | null,
+    metadata: {
+      title: string;
+      description?: string;
+      uploadedBy: string;
+    },
+    probe: VideoProbe | null,
+  ): Promise<{
+    _id: string;
+    title: string;
+    description?: string;
+    uploadedBy: string;
+    status: string;
+    message: string;
+  }> {
+    const uploadedVideoUrl = await this.r2Service.uploadFile(file, 'videos');
 
     let thumbnailUrl: string | undefined;
 
     if (thumbnail) {
       thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
     } else {
-      thumbnailUrl = await this.generateThumbnail(webSafeVideo).catch((err) => {
+      thumbnailUrl = await this.generateThumbnail(file).catch((err) => {
         console.warn('Thumbnail generation failed:', err?.message || err);
         return undefined;
       });
     }
 
-    const duration = await this.getVideoDuration(webSafeVideo).catch((err) => {
-      console.warn('Duration detection failed:', err?.message || err);
-      return 0;
-    });
+    const duration =
+      Math.round(probe?.duration || 0) ||
+      (await this.getVideoDuration(file).catch((err) => {
+        console.warn('Duration detection failed:', err?.message || err);
+        return 0;
+      }));
 
     const video = new this.videoModel({
       title: metadata.title,
       description: metadata.description,
       uploadedBy: metadata.uploadedBy,
+
       originalVideoUrl: uploadedVideoUrl,
       videoUrl: uploadedVideoUrl,
 
@@ -91,22 +143,239 @@ export class VideosService {
       title: savedVideo.title,
       description: savedVideo.description,
       uploadedBy: savedVideo.uploadedBy,
-      status: savedVideo.status || 'ready',
+      status: 'ready',
       message: 'Video uploaded successfully.',
     };
   }
 
-  private async transcodeToWebMp4(
+  private async saveProcessingVideo(
     file: Express.Multer.File,
+    thumbnail: Express.Multer.File | null,
+    metadata: {
+      title: string;
+      description?: string;
+      uploadedBy: string;
+    },
+    probe: VideoProbe | null,
+  ): Promise<{
+    _id: string;
+    title: string;
+    description?: string;
+    uploadedBy: string;
+    status: string;
+    message: string;
+  }> {
+    const originalVideoUrl = await this.r2Service.uploadFile(
+      file,
+      'videos-original',
+    );
+
+    let thumbnailUrl: string | undefined;
+
+    if (thumbnail) {
+      thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
+    }
+
+    const tmpOriginalPath = this.writeFileToTemp(file, 'background-original');
+
+    const video = new this.videoModel({
+      title: metadata.title,
+      description: metadata.description,
+      uploadedBy: metadata.uploadedBy,
+
+      originalVideoUrl,
+
+      // Important: never leave this empty.
+      // This gives the video a fallback URL while the converted version is prepared.
+      videoUrl: originalVideoUrl,
+
+      thumbnailUrl,
+      likedBy: [],
+      duration: Math.round(probe?.duration || 0),
+
+      status: 'processing',
+      processingError: '',
+    });
+
+    const savedVideo = await video.save();
+    const videoId = savedVideo._id.toString();
+
+    setImmediate(() => {
+      this.processVideoInBackground(videoId, tmpOriginalPath).catch((err) => {
+        console.error(`Background processing failed for ${videoId}:`, err);
+      });
+    });
+
+    return {
+      _id: videoId,
+      title: savedVideo.title,
+      description: savedVideo.description,
+      uploadedBy: savedVideo.uploadedBy,
+      status: 'processing',
+      message: 'Video uploaded. HunShow is processing it now.',
+    };
+  }
+
+  private async processVideoInBackground(
+    videoId: string,
+    inputPath: string,
+  ): Promise<void> {
+    console.log(`Processing started for video ${videoId}`);
+
+    try {
+      await this.videoModel.findByIdAndUpdate(videoId, {
+        status: 'processing',
+        processingError: '',
+      });
+
+      const convertedVideo = await this.transcodePathToWebMp4(inputPath);
+
+      const convertedVideoUrl = await this.r2Service.uploadFile(
+        convertedVideo,
+        'videos',
+      );
+
+      const duration = await this.getVideoDuration(convertedVideo).catch(
+        () => 0,
+      );
+
+      const currentVideo = await this.videoModel.findById(videoId).exec();
+
+      if (!currentVideo) {
+        console.warn(`Video disappeared before processing finished: ${videoId}`);
+        return;
+      }
+
+      let thumbnailUrl = currentVideo.thumbnailUrl;
+
+      if (!thumbnailUrl) {
+        thumbnailUrl = await this.generateThumbnail(convertedVideo).catch(
+          (err) => {
+            console.warn(
+              `Thumbnail generation failed for ${videoId}:`,
+              err?.message || err,
+            );
+            return undefined;
+          },
+        );
+      }
+
+      currentVideo.videoUrl = convertedVideoUrl;
+      currentVideo.thumbnailUrl = thumbnailUrl;
+      currentVideo.duration = duration || currentVideo.duration || 0;
+      currentVideo.status = 'ready';
+      currentVideo.processingError = '';
+
+      await currentVideo.save();
+
+      console.log(`Processing finished for video ${videoId}`);
+    } catch (err: any) {
+      const message = err?.message || 'Video processing failed';
+
+      await this.videoModel.findByIdAndUpdate(videoId, {
+        status: 'failed',
+        processingError: message,
+      });
+
+      console.error(`Processing failed for video ${videoId}:`, message);
+    } finally {
+      try {
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      } catch {
+        // Ignore temp cleanup errors
+      }
+    }
+  }
+
+  private async probeVideo(file: Express.Multer.File): Promise<VideoProbe> {
+    const tmpPath = this.writeFileToTemp(file, 'probe');
+
+    try {
+      return await new Promise<VideoProbe>((resolve, reject) => {
+        ffmpeg.ffprobe(tmpPath, (err, metadata) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          const streams = metadata.streams || [];
+
+          const videoStream: any = streams.find(
+            (stream: any) => stream.codec_type === 'video',
+          );
+
+          const audioStream: any = streams.find(
+            (stream: any) => stream.codec_type === 'audio',
+          );
+
+          if (!videoStream) {
+            reject(new Error('No video stream found'));
+            return;
+          }
+
+          resolve({
+            videoCodec: String(videoStream.codec_name || '').toLowerCase(),
+            audioCodec: audioStream?.codec_name
+              ? String(audioStream.codec_name).toLowerCase()
+              : null,
+            pixelFormat: videoStream.pix_fmt
+              ? String(videoStream.pix_fmt).toLowerCase()
+              : null,
+            formatName: String(metadata.format?.format_name || '').toLowerCase(),
+            duration: Number(metadata.format?.duration || 0),
+          });
+        });
+      });
+    } finally {
+      try {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      } catch {
+        // Ignore temp cleanup errors
+      }
+    }
+  }
+
+  private isWebSafeVideo(probe: VideoProbe, originalName = ''): boolean {
+    const ext = path.extname(originalName).toLowerCase();
+
+    const isMp4Container =
+      ext === '.mp4' ||
+      ext === '.m4v' ||
+      probe.formatName.includes('mp4') ||
+      probe.formatName.includes('m4v');
+
+    const isH264 = probe.videoCodec === 'h264' || probe.videoCodec === 'avc1';
+
+    const isAacOrNoAudio = !probe.audioCodec || probe.audioCodec === 'aac';
+
+    const isSafePixelFormat =
+      !probe.pixelFormat ||
+      probe.pixelFormat === 'yuv420p' ||
+      probe.pixelFormat === 'yuvj420p';
+
+    return isMp4Container && isH264 && isAacOrNoAudio && isSafePixelFormat;
+  }
+
+  private writeFileToTemp(
+    file: Express.Multer.File,
+    label: string,
+  ): string {
+    const tmpDir = os.tmpdir();
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const extension = path.extname(file.originalname || '') || '.upload';
+    const tmpPath = path.join(tmpDir, `${unique}-${label}${extension}`);
+
+    fs.writeFileSync(tmpPath, file.buffer);
+
+    return tmpPath;
+  }
+
+  private async transcodePathToWebMp4(
+    inputPath: string,
   ): Promise<Express.Multer.File> {
     const tmpDir = os.tmpdir();
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-
-    const inputExtension = path.extname(file.originalname || '') || '.mp4';
-    const inputPath = path.join(tmpDir, `${unique}-input${inputExtension}`);
     const outputPath = path.join(tmpDir, `${unique}-web.mp4`);
-
-    fs.writeFileSync(inputPath, file.buffer);
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -134,11 +403,11 @@ export class VideosService {
 
       return {
         buffer: outputBuffer,
-        originalname: `${path.parse(file.originalname || 'video').name}.mp4`,
+        originalname: `video-${Date.now()}.mp4`,
         mimetype: 'video/mp4',
         size: outputBuffer.length,
-        fieldname: file.fieldname,
-        encoding: file.encoding,
+        fieldname: 'file',
+        encoding: '7bit',
         stream: Readable.from(outputBuffer),
         destination: '',
         filename: '',
@@ -150,10 +419,9 @@ export class VideosService {
       );
     } finally {
       try {
-        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
         if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
       } catch {
-        // Ignore temporary file cleanup errors
+        // Ignore temp cleanup errors
       }
     }
   }
@@ -201,7 +469,7 @@ export class VideosService {
         if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo);
         if (fs.existsSync(tmpThumb)) fs.unlinkSync(tmpThumb);
       } catch {
-        // Ignore temporary file cleanup errors
+        // Ignore temp cleanup errors
       }
     }
   }
@@ -228,7 +496,7 @@ export class VideosService {
       try {
         if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo);
       } catch {
-        // Ignore temporary file cleanup errors
+        // Ignore temp cleanup errors
       }
     }
   }
@@ -241,18 +509,20 @@ export class VideosService {
     return user ? `${user.firstName} ${user.lastName}` : 'Unknown';
   }
 
-  private getPlayableVideoUrl(video: VideoDocument): string {
-    return video.videoUrl || video.originalVideoUrl || '';
-  }
-
   private getSafeStatus(video: VideoDocument): string {
-    if (video.status) return video.status;
+    if (video.status) {
+      return video.status;
+    }
 
-    if (this.getPlayableVideoUrl(video)) {
+    if (video.videoUrl || video.originalVideoUrl) {
       return 'ready';
     }
 
     return 'failed';
+  }
+
+  private getPlayableVideoUrl(video: VideoDocument): string {
+    return video.videoUrl || video.originalVideoUrl || '';
   }
 
   async findAll(search?: string) {
@@ -433,13 +703,6 @@ export class VideosService {
 
     if (!playableUrl) {
       throw new BadRequestException('Video file is not ready');
-    }
-
-    if (!video.videoUrl && video.originalVideoUrl) {
-      video.videoUrl = video.originalVideoUrl;
-      video.status = 'ready';
-      video.processingError = '';
-      await video.save();
     }
 
     const url = await this.r2Service.getSignedUrl(playableUrl);

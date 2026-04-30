@@ -25,12 +25,21 @@ import { StreamModule } from './stream/stream.module';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         host: config.get<string>('POSTGRES_HOST'),
-        port: config.get<number>('POSTGRES_PORT'),
+        port: Number(config.get<number>('POSTGRES_PORT') || 5432),
         username: config.get<string>('POSTGRES_USER'),
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true,
+
+        // Do not auto-sync schema in production.
+        synchronize: process.env.NODE_ENV !== 'production',
+
+        // Important for Supabase/Render pooler limits.
+        extra: {
+          max: 5,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+        },
       }),
       inject: [ConfigService],
     }),

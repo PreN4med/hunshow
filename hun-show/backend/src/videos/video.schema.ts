@@ -17,7 +17,7 @@ export class Video {
   genres: string[];
 
   @Prop()
-  thumbnailUrl: string;
+  thumbnailUrl?: string;
 
   @Prop()
   videoUrl: string;
@@ -27,7 +27,7 @@ export class Video {
 
   @Prop({
     enum: ['processing', 'ready', 'failed'],
-    default: 'ready',
+    default: 'processing',
   })
   status: VideoStatus;
 
