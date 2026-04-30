@@ -17,6 +17,17 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 
+const ffmpegPath = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static');
+
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
+
+if (ffprobeStatic?.path) {
+  ffmpeg.setFfprobePath(ffprobeStatic.path);
+}
+
 type VideoProbe = {
   videoCodec: string;
   audioCodec: string | null;
@@ -360,12 +371,32 @@ export class VideosService {
     file: Express.Multer.File,
     label: string,
   ): string {
+    if (!file?.buffer || file.buffer.length === 0) {
+      throw new BadRequestException('Uploaded video file is empty or corrupted.');
+    }
+
     const tmpDir = os.tmpdir();
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const extension = path.extname(file.originalname || '') || '.upload';
     const tmpPath = path.join(tmpDir, `${unique}-${label}${extension}`);
 
     fs.writeFileSync(tmpPath, file.buffer);
+
+    const stats = fs.statSync(tmpPath);
+
+    if (stats.size === 0) {
+      throw new BadRequestException('Temporary video file is empty.');
+    }
+
+    console.log('Temp video written:', {
+      label,
+      tmpPath,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      bufferSize: file.buffer.length,
+      tmpSize: stats.size,
+    });
 
     return tmpPath;
   }
@@ -386,6 +417,7 @@ export class VideosService {
             '-profile:v baseline',
             '-level 3.1',
             '-pix_fmt yuv420p',
+            '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',
 
             '-c:a aac',
             '-b:a 128k',
@@ -396,7 +428,16 @@ export class VideosService {
           .format('mp4')
           .save(outputPath)
           .on('end', () => resolve())
-          .on('error', (err: Error) => reject(err));
+          .on('error', (err, stdout, stderr) => {
+            console.error('FFmpeg conversion error:', {
+              inputPath,
+              outputPath,
+              message: err.message,
+              stderr,
+            });
+
+            reject(err);
+          });
       });
 
       const outputBuffer = fs.readFileSync(outputPath);
