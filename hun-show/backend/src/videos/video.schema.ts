@@ -27,7 +27,7 @@ export class Video {
 
   @Prop({
     enum: ['processing', 'ready', 'failed'],
-    default: 'processing',
+    default: 'ready',
   })
   status: VideoStatus;
 

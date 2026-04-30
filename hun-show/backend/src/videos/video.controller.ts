@@ -26,7 +26,7 @@ export class VideosController {
         { name: 'thumbnail', maxCount: 1 },
       ],
       {
-        limits: { fileSize: 300 * 1024 * 1024 },
+        limits: { fileSize: 500 * 1024 * 1024 },
       },
     ),
   )

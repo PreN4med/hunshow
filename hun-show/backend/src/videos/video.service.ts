@@ -45,139 +45,66 @@ export class VideosService {
     status: string;
     message: string;
   }> {
-    /*
-      Fast upload flow:
-      1. Save original video to R2.
-      2. Save MongoDB record as "processing".
-      3. Respond quickly.
-      4. Convert in background.
-      5. Mark video as "ready" or "failed".
-    */
 
-    const originalVideoUrl = await this.r2Service.uploadFile(
-      file,
-      'videos-original',
+    const webSafeVideo = await this.transcodeToWebMp4(file);
+
+    const uploadedVideoUrl = await this.r2Service.uploadFile(
+      webSafeVideo,
+      'videos',
     );
 
     let thumbnailUrl: string | undefined;
 
     if (thumbnail) {
       thumbnailUrl = await this.r2Service.uploadFile(thumbnail, 'thumbnails');
+    } else {
+      thumbnailUrl = await this.generateThumbnail(webSafeVideo).catch((err) => {
+        console.warn('Thumbnail generation failed:', err?.message || err);
+        return undefined;
+      });
     }
+
+    const duration = await this.getVideoDuration(webSafeVideo).catch((err) => {
+      console.warn('Duration detection failed:', err?.message || err);
+      return 0;
+    });
 
     const video = new this.videoModel({
       title: metadata.title,
       description: metadata.description,
       uploadedBy: metadata.uploadedBy,
-      originalVideoUrl,
-      videoUrl: '',
+      originalVideoUrl: uploadedVideoUrl,
+      videoUrl: uploadedVideoUrl,
+
       thumbnailUrl,
       likedBy: [],
-      duration: 0,
-      status: 'processing',
+      duration,
+
+      status: 'ready',
       processingError: '',
     });
 
     const savedVideo = await video.save();
-    const videoId = savedVideo._id.toString();
-
-    /*
-      Start processing after the response cycle.
-      Important: this is an in-process background task.
-      For a bigger production system, BullMQ/Redis queue would be stronger.
-    */
-    setImmediate(() => {
-      this.processVideoInBackground(videoId, file).catch((err) => {
-        console.error(`Background processing failed for ${videoId}:`, err);
-      });
-    });
 
     return {
-      _id: videoId,
+      _id: savedVideo._id.toString(),
       title: savedVideo.title,
       description: savedVideo.description,
       uploadedBy: savedVideo.uploadedBy,
-      status: savedVideo.status,
-      message: 'Video uploaded. Processing has started.',
+      status: savedVideo.status || 'ready',
+      message: 'Video uploaded successfully.',
     };
   }
 
-  private async processVideoInBackground(
-    videoId: string,
-    originalFile: Express.Multer.File,
-  ): Promise<void> {
-    console.log(`Processing started for video ${videoId}`);
-
-    try {
-      await this.videoModel.findByIdAndUpdate(videoId, {
-        status: 'processing',
-        processingError: '',
-      });
-
-      const convertedVideo = await this.transcodeToMp4(originalFile);
-      const convertedVideoUrl = await this.r2Service.uploadFile(
-        convertedVideo,
-        'videos',
-      );
-
-      const duration = await this.getVideoDuration(convertedVideo).catch(
-        () => 0,
-      );
-
-      const currentVideo = await this.videoModel.findById(videoId).exec();
-
-      if (!currentVideo) {
-        console.warn(`Video disappeared before processing finished: ${videoId}`);
-        return;
-      }
-
-      let thumbnailUrl = currentVideo.thumbnailUrl;
-
-      if (!thumbnailUrl) {
-        thumbnailUrl = await this.generateThumbnail(convertedVideo);
-      }
-
-      currentVideo.videoUrl = convertedVideoUrl;
-      currentVideo.thumbnailUrl = thumbnailUrl;
-      currentVideo.duration = duration;
-      currentVideo.status = 'ready';
-      currentVideo.processingError = '';
-
-      await currentVideo.save();
-
-      /*
-        Optional cleanup:
-        Delete the original upload after the converted MP4 is ready.
-        If you want to keep original files, remove this block.
-      */
-      if (currentVideo.originalVideoUrl) {
-        this.r2Service.deleteFile(currentVideo.originalVideoUrl).catch(() => {
-          console.warn(`Could not delete original for video ${videoId}`);
-        });
-      }
-
-      console.log(`Processing finished for video ${videoId}`);
-    } catch (err: any) {
-      const message = err?.message || 'Video processing failed';
-
-      await this.videoModel.findByIdAndUpdate(videoId, {
-        status: 'failed',
-        processingError: message,
-      });
-
-      console.error(`Processing failed for video ${videoId}:`, message);
-    }
-  }
-
-  private async transcodeToMp4(
+  private async transcodeToWebMp4(
     file: Express.Multer.File,
   ): Promise<Express.Multer.File> {
     const tmpDir = os.tmpdir();
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 
-    const inputExtension = path.extname(file.originalname || '') || '.upload';
+    const inputExtension = path.extname(file.originalname || '') || '.mp4';
     const inputPath = path.join(tmpDir, `${unique}-input${inputExtension}`);
-    const outputPath = path.join(tmpDir, `${unique}-output.mp4`);
+    const outputPath = path.join(tmpDir, `${unique}-web.mp4`);
 
     fs.writeFileSync(inputPath, file.buffer);
 
@@ -217,6 +144,10 @@ export class VideosService {
         filename: '',
         path: '',
       };
+    } catch (err: any) {
+      throw new BadRequestException(
+        `Video conversion failed: ${err?.message || 'Unsupported video file'}`,
+      );
     } finally {
       try {
         if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
@@ -302,6 +233,28 @@ export class VideosService {
     }
   }
 
+  private async getCreatorName(userId: string): Promise<string> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+    });
+
+    return user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+  }
+
+  private getPlayableVideoUrl(video: VideoDocument): string {
+    return video.videoUrl || video.originalVideoUrl || '';
+  }
+
+  private getSafeStatus(video: VideoDocument): string {
+    if (video.status) return video.status;
+
+    if (this.getPlayableVideoUrl(video)) {
+      return 'ready';
+    }
+
+    return 'failed';
+  }
+
   async findAll(search?: string) {
     const filter: Record<string, any> = {};
 
@@ -332,22 +285,20 @@ export class VideosService {
 
     return Promise.all(
       videos.map(async (v) => {
-        const user = await this.userRepo.findOne({
-          where: { id: v.uploadedBy },
-        });
+        const creatorName = await this.getCreatorName(v.uploadedBy);
 
         return {
           _id: v._id.toString(),
           title: v.title,
           description: v.description,
-          videoUrl: v.videoUrl,
+          videoUrl: this.getPlayableVideoUrl(v),
           uploadedBy: v.uploadedBy,
-          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          creatorName,
           createdAt: v.createdAt,
-          duration: v.duration,
+          duration: v.duration || 0,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
-          status: v.status || 'ready',
+          status: this.getSafeStatus(v),
           processingError: v.processingError || '',
         };
       }),
@@ -359,20 +310,20 @@ export class VideosService {
 
     return Promise.all(
       videos.map(async (v) => {
-        const user = await this.userRepo.findOne({ where: { id: userId } });
+        const creatorName = await this.getCreatorName(v.uploadedBy);
 
         return {
           _id: v._id.toString(),
           title: v.title,
           description: v.description,
-          videoUrl: v.videoUrl,
+          videoUrl: this.getPlayableVideoUrl(v),
           uploadedBy: v.uploadedBy,
-          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          creatorName,
           createdAt: v.createdAt,
-          duration: v.duration,
+          duration: v.duration || 0,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
-          status: v.status || 'ready',
+          status: this.getSafeStatus(v),
           processingError: v.processingError || '',
         };
       }),
@@ -403,11 +354,7 @@ export class VideosService {
       throw new NotFoundException('Video not found');
     }
 
-    const user = await this.userRepo.findOne({
-      where: { id: video.uploadedBy },
-    });
-
-    const creatorName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+    const creatorName = await this.getCreatorName(video.uploadedBy);
 
     const likedByCurrentUser = Boolean(
       currentUserId && video.likedBy?.includes(currentUserId),
@@ -417,15 +364,15 @@ export class VideosService {
       _id: video._id.toString(),
       title: video.title,
       description: video.description,
-      videoUrl: video.videoUrl,
+      videoUrl: this.getPlayableVideoUrl(video),
       uploadedBy: video.uploadedBy,
       creatorName,
       createdAt: video.createdAt,
-      duration: video.duration,
+      duration: video.duration || 0,
       likes: video.likedBy?.length || 0,
       likedByCurrentUser,
       thumbnailUrl: video.thumbnailUrl,
-      status: video.status || 'ready',
+      status: this.getSafeStatus(video),
       processingError: video.processingError || '',
     };
   }
@@ -443,7 +390,7 @@ export class VideosService {
 
     return {
       _id: video._id.toString(),
-      status: video.status || 'ready',
+      status: this.getSafeStatus(video),
       processingError: video.processingError || '',
     };
   }
@@ -482,19 +429,20 @@ export class VideosService {
       throw new NotFoundException('Video not found');
     }
 
-    if (video.status === 'processing') {
-      throw new BadRequestException('Video is still processing');
-    }
+    const playableUrl = this.getPlayableVideoUrl(video);
 
-    if (video.status === 'failed') {
-      throw new BadRequestException('Video processing failed');
-    }
-
-    if (!video.videoUrl) {
+    if (!playableUrl) {
       throw new BadRequestException('Video file is not ready');
     }
 
-    const url = await this.r2Service.getSignedUrl(video.videoUrl);
+    if (!video.videoUrl && video.originalVideoUrl) {
+      video.videoUrl = video.originalVideoUrl;
+      video.status = 'ready';
+      video.processingError = '';
+      await video.save();
+    }
+
+    const url = await this.r2Service.getSignedUrl(playableUrl);
 
     return { url };
   }
@@ -558,16 +506,24 @@ export class VideosService {
       throw new ForbiddenException('You can only delete your own videos');
     }
 
+    const keysToDelete = new Set<string>();
+
     if (video.videoUrl) {
-      await this.r2Service.deleteFile(video.videoUrl);
+      keysToDelete.add(video.videoUrl);
     }
 
     if (video.originalVideoUrl) {
-      await this.r2Service.deleteFile(video.originalVideoUrl).catch(() => {});
+      keysToDelete.add(video.originalVideoUrl);
     }
 
     if (video.thumbnailUrl) {
-      await this.r2Service.deleteFile(video.thumbnailUrl);
+      keysToDelete.add(video.thumbnailUrl);
+    }
+
+    for (const key of keysToDelete) {
+      await this.r2Service.deleteFile(key).catch(() => {
+        console.warn(`Could not delete R2 file: ${key}`);
+      });
     }
 
     await this.videoModel.findByIdAndDelete(id);
@@ -580,21 +536,20 @@ export class VideosService {
 
     return Promise.all(
       videos.map(async (v) => {
-        const user = await this.userRepo.findOne({
-          where: { id: v.uploadedBy },
-        });
+        const creatorName = await this.getCreatorName(v.uploadedBy);
 
         return {
           _id: v._id.toString(),
           title: v.title,
           description: v.description,
-          videoUrl: v.videoUrl,
+          videoUrl: this.getPlayableVideoUrl(v),
           uploadedBy: v.uploadedBy,
-          creatorName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+          creatorName,
           createdAt: v.createdAt,
+          duration: v.duration || 0,
           likes: v.likedBy?.length || 0,
           thumbnailUrl: v.thumbnailUrl,
-          status: v.status || 'ready',
+          status: this.getSafeStatus(v),
           processingError: v.processingError || '',
         };
       }),

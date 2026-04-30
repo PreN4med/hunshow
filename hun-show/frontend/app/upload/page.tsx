@@ -9,7 +9,7 @@ const API_URL = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 ).replace(/\/$/, "");
 
-const MAX_VIDEO_SIZE = 300 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
 const MAX_THUMBNAIL_SIZE = 50 * 1024 * 1024; 
 
 const ALLOWED_VIDEO_TYPES = [
@@ -301,7 +301,7 @@ export default function UploadPage() {
                       <p className="uploadHelper">
                         {file
                           ? `${formatFileSize(file.size)} selected`
-                          : "Select an MP4, MOV, WebM, or M4V video under 150 MB."}
+                          : "Select an MP4, MOV, WebM, or M4V video under 500 MB."}
                       </p>
                     </div>
 

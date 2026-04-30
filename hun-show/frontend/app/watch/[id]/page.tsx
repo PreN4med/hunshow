@@ -32,14 +32,18 @@ type SidebarMovie = {
 };
 
 type Comment = {
-  id: string;
+  id?: string;
+  _id?: string;
   content: string;
-  user_id: string;
+  user_id?: string;
+  userId?: string;
   created_at: string;
   user?: {
-    id: string;
-    name: string;
-    email: string;
+    id?: string;
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
   };
 };
 
@@ -145,6 +149,7 @@ export default function WatchPage() {
   const [editedTitle, setEditedTitle] = useState("");
   const [editedDescription, setEditedDescription] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
@@ -158,8 +163,17 @@ export default function WatchPage() {
       try {
         const parsedUser = JSON.parse(storedUser);
         parsedUserId = parsedUser?.id ?? null;
+
+        const fullName = `${parsedUser?.firstName || ""} ${
+          parsedUser?.lastName || ""
+        }`.trim();
+
+        setCurrentUserName(
+          parsedUser?.name || fullName || parsedUser?.email || "Anonymous",
+        );
       } catch {
         parsedUserId = null;
+        setCurrentUserName("");
       }
     }
 
@@ -181,14 +195,18 @@ export default function WatchPage() {
         const currentCreator = formatPersonName(
           data.creatorName || data.uploadedBy || "Unknown creator",
         );
+
         let thumbnailUrl = "/thumbnails/default.jpg";
+
         if (data.thumbnailUrl) {
           thumbnailUrl = await fetchThumbnailUrl(data._id);
         }
 
         const stored = localStorage.getItem("user");
+
         if (stored) {
           const parsed = JSON.parse(stored);
+
           if (parsed.id === data.uploadedBy) {
             setIsOwner(true);
           }
@@ -211,7 +229,6 @@ export default function WatchPage() {
         setEditedDescription(movieFromApi.description);
         setLiked(Boolean(data.likedByCurrentUser));
 
-        // Fetch comments for this video
         await fetchComments(data._id);
 
         if (startEditing) {
@@ -277,10 +294,12 @@ export default function WatchPage() {
     const confirmed = window.confirm(
       "Are you sure you want to delete this video?",
     );
+
     if (!confirmed) return;
 
     const storedUser = localStorage.getItem("user");
     if (!storedUser) return;
+
     const parsedUser = JSON.parse(storedUser);
 
     setDeleting(true);
@@ -389,8 +408,10 @@ export default function WatchPage() {
 
   const fetchComments = async (videoId: string) => {
     setCommentsLoading(true);
+
     try {
       const res = await fetch(`${API_URL}/comments/video/${videoId}`);
+
       if (res.ok) {
         const data = await res.json();
         setComments(Array.isArray(data) ? data : []);
@@ -418,6 +439,7 @@ export default function WatchPage() {
     }
 
     setSubmittingComment(true);
+
     try {
       const res = await fetch(`${API_URL}/comments`, {
         method: "POST",
@@ -473,10 +495,43 @@ export default function WatchPage() {
     }
   };
 
+  function getCommentId(comment: Comment) {
+    return comment.id || comment._id || "";
+  }
+
+  function getCommentUserId(comment: Comment) {
+    return comment.user_id || comment.userId || comment.user?.id || "";
+  }
+
+  function getCommentAuthor(comment: Comment) {
+    const directName = comment.user?.name?.trim();
+
+    if (directName) {
+      return directName;
+    }
+
+    const fullName = `${comment.user?.firstName || ""} ${
+      comment.user?.lastName || ""
+    }`.trim();
+
+    if (fullName) {
+      return fullName;
+    }
+
+    const commentUserId = getCommentUserId(comment);
+
+    if (userId && commentUserId === userId && currentUserName) {
+      return currentUserName;
+    }
+
+    return "Anonymous";
+  }
+
   if (loading) {
     return (
       <>
         <Header page="home" />
+
         <main className="container watchPage">
           <div className="watchLoadingCard">
             <p className="accountMuted">Loading video…</p>
@@ -488,12 +543,15 @@ export default function WatchPage() {
                 <Link href="/" className="footerLink">
                   About
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Q&amp;A
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Privacy
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Contact
                 </Link>
@@ -513,9 +571,11 @@ export default function WatchPage() {
     return (
       <>
         <Header page="home" />
+
         <main className="container watchPage">
           <div className="watchLoadingCard">
             <p className="accountMuted">Movie not found.</p>
+
             <Link href="/" className="watchBackBtn">
               <ArrowLeftIcon />
               <span>Back to Browse</span>
@@ -528,12 +588,15 @@ export default function WatchPage() {
                 <Link href="/" className="footerLink">
                   About
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Q&amp;A
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Privacy
                 </Link>
+
                 <Link href="/" className="footerLink">
                   Contact
                 </Link>
@@ -565,6 +628,7 @@ export default function WatchPage() {
 
             <div className="watchTitleBlock">
               <h1 className="watchTitle">{movie.title}</h1>
+
               <p className="watchMeta">
                 By {movie.creator}
                 {movie.createdAt ? ` • ${movie.createdAt}` : ""}
@@ -715,32 +779,44 @@ export default function WatchPage() {
                     No comments yet. Be the first to comment!
                   </p>
                 ) : (
-                  comments.map((comment) => (
-                    <div key={comment.id} className="watchCommentItem">
-                      <div className="watchCommentHeader">
-                        <span className="watchCommentAuthor">
-                          {comment.user?.name || "Anonymous"}
-                        </span>
-                        <span className="watchCommentDate">
-                          {new Date(comment.created_at).toLocaleDateString(
-                            "en-US",
-                          )}
-                        </span>
+                  comments.map((comment, index) => {
+                    const commentId = getCommentId(comment);
+                    const commentUserId = getCommentUserId(comment);
+
+                    return (
+                      <div
+                        key={
+                          commentId ||
+                          `${commentUserId}-${comment.created_at}-${index}`
+                        }
+                        className="watchCommentItem"
+                      >
+                        <div className="watchCommentHeader">
+                          <span className="watchCommentAuthor">
+                            {getCommentAuthor(comment)}
+                          </span>
+
+                          <span className="watchCommentDate">
+                            {new Date(comment.created_at).toLocaleDateString(
+                              "en-US",
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="watchCommentText">{comment.content}</p>
+
+                        {userId === commentUserId && commentId && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(commentId)}
+                            className="watchCommentDeleteBtn"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
-
-                      <p className="watchCommentText">{comment.content}</p>
-
-                      {userId === comment.user_id && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteComment(comment.id)}
-                          className="watchCommentDeleteBtn"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </section>
@@ -762,12 +838,14 @@ export default function WatchPage() {
                         src={related.thumbnail || "/thumbnails/default.jpg"}
                         alt={related.title}
                         fill
+                        unoptimized
                         style={{ objectFit: "cover" }}
                       />
                     </div>
 
                     <div className="watchSidebarBody">
                       <p className="watchSidebarItemTitle">{related.title}</p>
+
                       <p className="watchSidebarMeta">
                         {related.creator}
                         {related.createdAt ? ` • ${related.createdAt}` : ""}
@@ -790,12 +868,15 @@ export default function WatchPage() {
               <Link href="/" className="footerLink">
                 About
               </Link>
+
               <Link href="/" className="footerLink">
                 Q&amp;A
               </Link>
+
               <Link href="/" className="footerLink">
                 Privacy
               </Link>
+
               <Link href="/" className="footerLink">
                 Contact
               </Link>
