@@ -268,7 +268,7 @@ export default function BroadcastPage() {
           <div>
             <p
               style={{
-                fontSize: "11px",
+                fontSize: "12px",
                 fontWeight: 600,
                 color: "#9ca3af",
                 letterSpacing: "0.08em",
@@ -296,7 +296,7 @@ export default function BroadcastPage() {
                 <label
                   style={{
                     display: "block",
-                    fontSize: "14px",
+                    fontSize: "16px",
                     fontWeight: 700,
                     color: "#374151",
                     marginBottom: "8px",
@@ -326,7 +326,7 @@ export default function BroadcastPage() {
                 <label
                   style={{
                     display: "block",
-                    fontSize: "14px",
+                    fontSize: "16px",
                     fontWeight: 700,
                     color: "#374151",
                     marginBottom: "10px",
@@ -466,7 +466,7 @@ export default function BroadcastPage() {
                   style={{
                     width: "100%",
                     padding: "13px",
-                    borderRadius: "12px",
+                    borderRadius: "999px",
                     border: "none",
                     background: activeSource ? "#7c3aed" : "#ddd6fe",
                     color: "white",
@@ -496,7 +496,7 @@ export default function BroadcastPage() {
                 style={{
                   width: "100%",
                   padding: "13px",
-                  borderRadius: "12px",
+                  borderRadius: "999px",
                   border: "1.5px solid #e5e7eb",
                   background: "#fff",
                   color: "#374151",
