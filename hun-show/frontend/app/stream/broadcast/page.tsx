@@ -297,7 +297,7 @@ export default function BroadcastPage() {
                   style={{
                     display: "block",
                     fontSize: "14px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: "#374151",
                     marginBottom: "8px",
                   }}
@@ -327,7 +327,7 @@ export default function BroadcastPage() {
                   style={{
                     display: "block",
                     fontSize: "14px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: "#374151",
                     marginBottom: "10px",
                   }}
@@ -357,8 +357,8 @@ export default function BroadcastPage() {
                     <p
                       style={{
                         margin: 0,
-                        fontWeight: 600,
-                        fontSize: "14px",
+                        fontWeight: 700,
+                        fontSize: "18px",
                         color: "#111827",
                       }}
                     >
@@ -369,7 +369,6 @@ export default function BroadcastPage() {
                         margin: "2px 0 0",
                         fontSize: "12px",
                         color: "#6b7280",
-                        fontWeight: "bold",
                       }}
                     >
                       Camera + microphone
@@ -392,8 +391,8 @@ export default function BroadcastPage() {
                     <p
                       style={{
                         margin: 0,
-                        fontWeight: 600,
-                        fontSize: "14px",
+                        fontWeight: 700,
+                        fontSize: "18px",
                         color: "#111827",
                       }}
                     >
