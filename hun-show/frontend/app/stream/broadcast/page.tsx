@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import { Boldonse } from "next/font/google";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -254,7 +255,7 @@ export default function BroadcastPage() {
         {/* Right: Settings Panel */}
         <div
           style={{
-            width: "300px",
+            width: "500px",
             background: "#ffffff",
             borderRadius: "16px",
             padding: "28px 24px",
@@ -368,6 +369,7 @@ export default function BroadcastPage() {
                         margin: "2px 0 0",
                         fontSize: "12px",
                         color: "#6b7280",
+                        fontWeight: "bold",
                       }}
                     >
                       Camera + microphone
