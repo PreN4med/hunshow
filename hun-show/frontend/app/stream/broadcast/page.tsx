@@ -255,7 +255,7 @@ export default function BroadcastPage() {
         {/* Right: Settings Panel */}
         <div
           style={{
-            width: "500px",
+            width: "400px",
             background: "#ffffff",
             borderRadius: "16px",
             padding: "28px 24px",
