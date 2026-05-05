@@ -150,7 +150,7 @@ export default function BroadcastPage() {
           display: "flex",
           gap: "20px",
           width: "100%",
-          maxWidth: "1100px",
+          maxWidth: "100%",
           alignItems: "stretch",
         }}
       >
