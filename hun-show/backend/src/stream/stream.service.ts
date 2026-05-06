@@ -15,6 +15,7 @@ export class StreamService {
   > = new Map();
   private uploadIntervals: Map<string, NodeJS.Timeout> = new Map();
   private uploadedSegments: Map<string, number> = new Map();
+  private uploadLocks: Map<string, boolean> = new Map();
 
   constructor(
     private readonly redis: RedisService,
@@ -38,10 +39,14 @@ export class StreamService {
       status: 'live',
       tmpDir,
     });
+
+    // Clear any stale playlist data from a previous stream with this id
+    await this.redis.del(`playlist:${streamId}`);
     await this.redis.sadd('active-streams', streamId);
 
     const stdinStream = new PassThrough();
     this.uploadedSegments.set(streamId, -1);
+    this.uploadLocks.set(streamId, false);
 
     const command = ffmpeg()
       .input(stdinStream)
@@ -52,7 +57,6 @@ export class StreamService {
         '-f hls',
         '-hls_time 2',
         '-hls_list_size 10',
-        '-hls_flags delete_segments',
         '-hls_segment_filename',
         path.join(tmpDir, 'seg-%d.ts'),
       ])
@@ -74,41 +78,74 @@ export class StreamService {
 
   private startUploader(streamId: string, tmpDir: string) {
     const interval = setInterval(() => {
+      if (this.uploadLocks.get(streamId)) return;
+      this.uploadLocks.set(streamId, true);
+
       (async () => {
         if (!fs.existsSync(tmpDir)) return;
+
+        const m3u8Path = path.join(tmpDir, 'playlist.m3u8');
+        if (!fs.existsSync(m3u8Path)) return;
+
+        const m3u8Content = fs.readFileSync(m3u8Path, 'utf8');
+        const lines = m3u8Content.split('\n');
+
+        const durationMap = new Map<string, string>();
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith('#EXTINF:')) {
+            const extinf = lines[i].trim();
+            const segLine = lines[i + 1]?.trim();
+            if (segLine && segLine.endsWith('.ts')) {
+              const segFile = path.basename(segLine);
+              durationMap.set(segFile, extinf);
+            }
+          }
+        }
+
         const files = fs
           .readdirSync(tmpDir)
           .filter((f) => f.endsWith('.ts'))
-          .sort((a, b) => {
-            return (
+          .sort(
+            (a, b) =>
               parseInt(a.match(/\d+/)?.[0] || '0') -
-              parseInt(b.match(/\d+/)?.[0] || '0')
-            );
-          });
+              parseInt(b.match(/\d+/)?.[0] || '0'),
+          );
 
         const currentMaxSeq = this.uploadedSegments.get(streamId) ?? -1;
 
         for (const file of files) {
           const seq = parseInt(file.match(/seg-(\d+)\.ts/)?.[1] || '-1');
-          if (seq > currentMaxSeq && files.includes(`seg-${seq + 1}.ts`)) {
-            const filePath = path.join(tmpDir, file);
-            const buffer = fs.readFileSync(filePath);
-            await this.r2.uploadBuffer(
-              buffer,
-              `streams/${streamId}/${file}`,
-              'video/mp2t',
-            );
-            await this.redis.rpush(`playlist:${streamId}`, file);
-            this.uploadedSegments.set(streamId, seq);
-            try {
-              fs.unlinkSync(filePath);
-            } catch {
-              /* ignore */
-            }
+
+          if (seq !== currentMaxSeq + 1) continue;
+
+          if (!files.includes(`seg-${seq + 1}.ts`)) continue;
+
+          if (!durationMap.has(file)) continue;
+
+          const filePath = path.join(tmpDir, file);
+          const buffer = fs.readFileSync(filePath);
+
+          await this.r2.uploadBuffer(
+            buffer,
+            `streams/${streamId}/${file}`,
+            'video/mp2t',
+          );
+
+          const extinf = durationMap.get(file)!;
+          await this.redis.rpush(`playlist:${streamId}`, `${extinf}|${file}`);
+          this.uploadedSegments.set(streamId, seq);
+
+          try {
+            fs.unlinkSync(filePath);
+          } catch {
+            /* ignore */
           }
         }
-      })().catch((err) => console.error(`Uploader error:`, err));
+      })()
+        .catch((err) => console.error(`Uploader error:`, err))
+        .finally(() => this.uploadLocks.set(streamId, false));
     }, 1000);
+
     this.uploadIntervals.set(streamId, interval);
   }
 
@@ -119,8 +156,12 @@ export class StreamService {
       stream.command.kill('SIGKILL');
       this.activeStreams.delete(streamId);
     }
+
     const interval = this.uploadIntervals.get(streamId);
     if (interval) clearInterval(interval);
+    this.uploadIntervals.delete(streamId);
+    this.uploadLocks.delete(streamId);
+    this.uploadedSegments.delete(streamId);
 
     await this.redis.hset(`stream:${streamId}`, 'status', 'ended');
     await this.redis.srem('active-streams', streamId);

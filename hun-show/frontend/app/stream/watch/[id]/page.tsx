@@ -51,11 +51,9 @@ export default function WatchStreamPage() {
 
     fetchStreamInfo();
 
-    // Poll for playlist URL every 3 seconds until it's ready
     const playlistPoller = setInterval(async () => {
       try {
         const playlistUrl = `${API_URL}/stream/${streamId}/playlist.m3u8`;
-
         const res = await fetch(playlistUrl, { method: "HEAD" });
 
         if (res.ok && videoRef.current && !hlsRef.current) {
@@ -64,16 +62,16 @@ export default function WatchStreamPage() {
 
           if (Hls.isSupported()) {
             const hls = new Hls({
-              liveSyncDurationCount: 2,
-              liveMaxLatencyDurationCount: 6,
+              liveSyncDurationCount: 5,
+              liveMaxLatencyDurationCount: 10,
               maxBufferLength: 30,
               maxMaxBufferLength: 60,
               manifestLoadingTimeOut: 20000,
-              manifestLoadingMaxRetry: 6,
+              manifestLoadingMaxRetry: 10,
               fragLoadingTimeOut: 30000,
               fragLoadingMaxRetry: 6,
               levelLoadingTimeOut: 20000,
-              levelLoadingMaxRetry: 4,
+              levelLoadingMaxRetry: 6,
               lowLatencyMode: false,
               enableWorker: true,
             });
@@ -113,7 +111,6 @@ export default function WatchStreamPage() {
       }
     }, 3000);
 
-    // WebSocket for chat and viewer count
     socketRef.current = io(`${API_URL}/stream`, {
       path: "/socket.io/",
       transports: ["websocket"],

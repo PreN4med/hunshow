@@ -55,11 +55,6 @@ export class StreamController {
     return this.streamService.getActiveStreams();
   }
 
-  @Get(':id')
-  async getStream(@Param('id') id: string) {
-    return this.streamService.getStream(id);
-  }
-
   @Get(':id/chat')
   async getChatHistory(@Param('id') id: string) {
     return this.streamService.getChatHistory(id);
@@ -70,33 +65,49 @@ export class StreamController {
     @Param('id') streamId: string,
     @Res() res: express.Response,
   ) {
-    const segments = await this.streamService.getPlaylistSegments(streamId);
-    if (!segments || segments.length === 0)
+    const entries = await this.streamService.getPlaylistSegments(streamId);
+    if (!entries || entries.length === 0)
       return res.status(404).send('No segments yet');
     if (!publicUrl) return res.status(500).send('R2_PUBLIC_URL not set');
 
     const baseUrl = publicUrl.endsWith('/')
       ? publicUrl.slice(0, -1)
       : publicUrl;
+
     const windowSize = 6;
-    const window = segments.slice(-windowSize);
-    const mediaSequence = Math.max(0, segments.length - windowSize);
+    const window = entries.slice(-windowSize);
+    const mediaSequence = Math.max(0, entries.length - windowSize);
+
+    let maxDuration = 2;
+    const parsed = window.map((entry) => {
+      const pipeIdx = entry.indexOf('|');
+      const extinf = entry.slice(0, pipeIdx); // "#EXTINF:2.001600,"
+      const file = entry.slice(pipeIdx + 1); // "seg-5.ts"
+      const dur = parseFloat(extinf.replace('#EXTINF:', '').replace(',', ''));
+      if (!isNaN(dur) && dur > maxDuration) maxDuration = dur;
+      return { extinf, file };
+    });
 
     const manifest = [
       '#EXTM3U',
       '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:2', // Matches StreamService
+      `#EXT-X-TARGETDURATION:${Math.ceil(maxDuration)}`,
       `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`,
     ];
 
-    window.forEach((seg) => {
-      manifest.push('#EXTINF:2.0,');
-      manifest.push(`${baseUrl}/streams/${streamId}/${seg}`);
+    parsed.forEach(({ extinf, file }) => {
+      manifest.push(extinf);
+      manifest.push(`${baseUrl}/streams/${streamId}/${file}`);
     });
 
     res.set('Content-Type', 'application/vnd.apple.mpegurl');
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.send(manifest.join('\n'));
+  }
+
+  @Get(':id')
+  async getStream(@Param('id') id: string) {
+    return this.streamService.getStream(id);
   }
 }
