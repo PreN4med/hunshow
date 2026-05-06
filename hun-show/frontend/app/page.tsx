@@ -350,7 +350,7 @@ export default function HomePage() {
                   <span>Liked Videos</span>
                 </Link>
 
-                <Link href="/stream/broadcast" className="sidebarItem">
+                <Link href="/stream" className="sidebarItem">
                   <SidebarIcon kind="streaming" />
                   <span>Streaming</span>
                 </Link>
