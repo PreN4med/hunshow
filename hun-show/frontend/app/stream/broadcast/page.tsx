@@ -127,6 +127,9 @@ export default function BroadcastPage() {
   };
 
   const handleEndStream = () => {
+    if (streamId) {
+      socketRef.current?.emit("end-stream", { streamId });
+    }
     mediaRecorderRef.current?.stop();
     setStreaming(false);
     stopMedia();
