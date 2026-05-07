@@ -162,17 +162,32 @@ export default function AccountPage() {
     }
   };
 
-  const handleSaveName = () => {
+    const handleSaveName = async () => {
     if (!user) return;
 
-    const nextUser = {
-      ...user,
-      name: editedName.trim(),
-    };
+    const nameParts = editedName.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
 
-    setUser(nextUser);
-    localStorage.setItem("user", JSON.stringify(nextUser));
-    setIsEditing(false);
+    try {
+      const res = await fetch(`${API_URL}/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName }),
+    });
+
+    if (!res.ok) {
+      alert('Failed to update name');
+      return;
+    }
+
+    const nextUser = { ...user, name: editedName.trim(), firstName, lastName };
+      setUser(nextUser);
+      localStorage.setItem('user', JSON.stringify(nextUser));
+      setIsEditing(false);
+  } catch {
+      alert('Something went wrong');
+  }
   };
 
   const handleLogout = () => {
