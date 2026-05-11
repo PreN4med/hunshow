@@ -83,7 +83,7 @@ export default function WatchStreamPage() {
 
     fetchStreamInfo();
 
-    const playlistPoller = window.setInterval(async () => {
+    const playlistPoller = setInterval(async () => {
       try {
         const playlistUrl = `${API_URL}/stream/${streamId}/playlist.m3u8`;
         const res = await fetch(playlistUrl, { method: "HEAD" });
@@ -94,16 +94,16 @@ export default function WatchStreamPage() {
 
           if (Hls.isSupported()) {
             const hls = new Hls({
-              liveSyncDurationCount: 2,
-              liveMaxLatencyDurationCount: 6,
+              liveSyncDurationCount: 5,
+              liveMaxLatencyDurationCount: 10,
               maxBufferLength: 30,
               maxMaxBufferLength: 60,
               manifestLoadingTimeOut: 20000,
-              manifestLoadingMaxRetry: 6,
+              manifestLoadingMaxRetry: 10,
               fragLoadingTimeOut: 30000,
               fragLoadingMaxRetry: 6,
               levelLoadingTimeOut: 20000,
-              levelLoadingMaxRetry: 4,
+              levelLoadingMaxRetry: 6,
               lowLatencyMode: false,
               enableWorker: true,
             });

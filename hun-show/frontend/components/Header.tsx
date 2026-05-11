@@ -34,10 +34,7 @@ function GoLiveIcon() {
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path
-        d="M16 10L20 7.5V16.5L16 14V10Z"
-        fill="currentColor"
-      />
+      <path d="M16 10L20 7.5V16.5L16 14V10Z" fill="currentColor" />
       <circle cx="8.2" cy="10" r="1.3" fill="currentColor" />
     </svg>
   );

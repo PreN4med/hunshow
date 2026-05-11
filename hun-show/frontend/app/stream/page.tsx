@@ -174,7 +174,9 @@ export default function StreamPage() {
   const loadStreams = useCallback(async () => {
     const activeStreams = await fetchActiveStreams();
 
-    const activeKeys = new Set(activeStreams.map((stream) => getStreamKey(stream)));
+    const activeKeys = new Set(
+      activeStreams.map((stream) => getStreamKey(stream)),
+    );
 
     for (const key of streamOrderRef.current.keys()) {
       if (!activeKeys.has(key)) {
@@ -319,7 +321,8 @@ export default function StreamPage() {
               <div className="streamEmptyState">
                 <h3 className="streamEmptyTitle">No one is live right now</h3>
                 <p className="p">
-                  When someone starts broadcasting, their stream will appear here.
+                  When someone starts broadcasting, their stream will appear
+                  here.
                 </p>
 
                 <Link
