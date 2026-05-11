@@ -1,29 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { Boldonse } from "next/font/google";
 
-const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
-).replace(/\/$/, "");
-
-type SourceType = "camera" | "screen" | null;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function BroadcastPage() {
   const router = useRouter();
-
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const streamingRef = useRef(false);
 
   const [streaming, setStreaming] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
-  const [liveUrl, setLiveUrl] = useState("");
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
 
@@ -32,44 +24,26 @@ export default function BroadcastPage() {
   );
 
   useEffect(() => {
-    streamingRef.current = streaming;
-  }, [streaming]);
-
-  useEffect(() => {
-    socketRef.current = io(`${API_URL}/stream`, {
-      path: "/socket.io/",
-      transports: ["websocket"],
-    });
-
+    socketRef.current = io(`${API_URL}/stream`);
     return () => {
       socketRef.current?.disconnect();
       stopMedia();
     };
   }, []);
 
-  useEffect(() => {
-    if (!streamId) return;
-    setLiveUrl(`${window.location.origin}/stream/watch/${streamId}`);
-  }, [streamId]);
-
-  function stopMedia() {
+  const stopMedia = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+  };
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }
-
-  async function selectSource(type: "camera" | "screen") {
+  const selectSource = async (type: "camera" | "screen") => {
     try {
       setError("");
       stopMedia();
 
       let stream: MediaStream;
-
       if (type === "screen") {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: {
@@ -79,22 +53,19 @@ export default function BroadcastPage() {
           },
           audio: true,
         });
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack && "contentHint" in videoTrack) {
+          (videoTrack as any).contentHint = "motion";
+        }
       } else {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+          video: { width: 1280, height: 720 },
           audio: true,
         });
       }
 
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
+      if (videoRef.current) videoRef.current.srcObject = stream;
       setActiveSource(type);
 
       stream.getVideoTracks()[0].onended = () => {
@@ -106,212 +77,66 @@ export default function BroadcastPage() {
       };
     } catch (err) {
       console.error(err);
-      setError(
-        type === "screen"
-          ? "Screen sharing was blocked or canceled."
-          : "Camera access was blocked or unavailable.",
-      );
+      setError(`Failed to access ${type}. It may be blocked or unsupported.`);
     }
-  }
+  };
 
-  function PlayIcon() {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-        className="streamPlaySvg"
-      >
-        <path
-          d="M9 7.75V16.25C9 16.95 9.76 17.38 10.36 17.02L17.18 12.77C17.74 12.42 17.74 11.58 17.18 11.23L10.36 6.98C9.76 6.62 9 7.05 9 7.75Z"
-          fill="currentColor"
-        />
-      </svg>
-    );
-  }
-
-  function getRecorderOptions(): MediaRecorderOptions {
-    const possibleTypes = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ];
-
-    const supportedType = possibleTypes.find((type) =>
-      MediaRecorder.isTypeSupported(type),
-    );
-
-    if (supportedType) {
-      return {
-        mimeType: supportedType,
-        videoBitsPerSecond: 3000000,
-      };
-    }
-
-    return {
-      videoBitsPerSecond: 3000000,
-    };
-  }
-
-  async function notifyStreamEnded(id: string) {
-    const payload = JSON.stringify({
-      streamId: id,
-      deleteSegments: true,
-    });
-
-    const endpoints = [
-      {
-        url: `${API_URL}/stream/${id}`,
-        options: {
-          method: "DELETE",
-        },
-      },
-      {
-        url: `${API_URL}/stream/${id}/end`,
-        options: {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payload,
-        },
-      },
-      {
-        url: `${API_URL}/stream/end`,
-        options: {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payload,
-        },
-      },
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const res = await fetch(endpoint.url, endpoint.options);
-
-        if (res.ok) {
-          return true;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    return false;
-  }
-
-  async function handleGoLive() {
-    const cleanTitle = title.trim();
-
-    if (!cleanTitle) {
-      setError("Please enter a stream title.");
-      return;
-    }
-
-    if (!streamRef.current) {
-      setError("Please select your camera or screen first.");
-      return;
-    }
-
-    const userData = localStorage.getItem("user");
-
-    if (!userData) {
-      router.push("/login");
-      return;
-    }
-
-    const user = JSON.parse(userData);
-    const userId = user.id || user._id;
-
-    if (!userId) {
-      setError("Could not find your user account. Please log in again.");
-      return;
-    }
+  const handleGoLive = async () => {
+    if (!title) return setError("Please enter a title");
+    if (!streamRef.current)
+      return setError("Please select a camera or screen first");
 
     try {
-      setError("");
-
       const res = await fetch(`${API_URL}/stream/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, title: cleanTitle }),
+        body: JSON.stringify({ userId: "user-123", title }),
       });
-
       const data = await res.json();
+      setStreamId(data.streamId);
 
-      if (!res.ok) {
-        setError(data.message || "Failed to start stream.");
-        return;
-      }
+      const options = {
+        mimeType: "video/webm;codecs=h264",
+        videoBitsPerSecond: 3000000,
+      };
+      const actualOptions = MediaRecorder.isTypeSupported(options.mimeType)
+        ? options
+        : { mimeType: "video/webm", videoBitsPerSecond: 3000000 };
 
-      const newStreamId = data.streamId || data.id || data._id;
-
-      if (!newStreamId) {
-        setError("Stream started, but no stream ID was returned.");
-        return;
-      }
-
-      setStreamId(newStreamId);
-
-      const mediaRecorder = new MediaRecorder(
-        streamRef.current,
-        getRecorderOptions(),
-      );
-
+      const mediaRecorder = new MediaRecorder(streamRef.current, actualOptions);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size <= 0) return;
-
-        const formData = new FormData();
-        formData.append("chunk", event.data);
-        formData.append("streamId", newStreamId);
-
-        fetch(`${API_URL}/stream/chunk`, {
-          method: "POST",
-          body: formData,
-        }).catch(console.error);
+        if (event.data.size > 0) {
+          const formData = new FormData();
+          formData.append("chunk", event.data);
+          formData.append("streamId", data.streamId);
+          fetch(`${API_URL}/stream/chunk`, {
+            method: "POST",
+            body: formData,
+          }).catch(console.error);
+        }
       };
 
-      mediaRecorder.start(2000);
+      mediaRecorder.start(500);
       setStreaming(true);
-
-      socketRef.current?.emit("broadcast-started", { streamId: newStreamId });
+      socketRef.current?.emit("join-stream", { streamId: data.streamId });
     } catch (err) {
-      console.error(err);
       setError("Failed to start stream.");
     }
-  }
+  };
 
-  async function handleEndStream() {
-    const endingStreamId = streamId;
-
-    try {
-      if (mediaRecorderRef.current?.state !== "inactive") {
-        mediaRecorderRef.current?.stop();
-      }
-    } catch {
-      // ignore recorder stop errors
+  const handleEndStream = () => {
+    if (streamId) {
+      socketRef.current?.emit("end-stream", { streamId });
     }
+    mediaRecorderRef.current?.stop();
+    setStreaming(false);
+    stopMedia();
+    router.push("/");
+  };
 
-  if (streamId) {
-    socketRef.current?.emit("end-stream", { streamId });
-  }
-  mediaRecorderRef.current?.stop();
-  setStreaming(false);
-  streamingRef.current = false;
-  stopMedia();
-  setActiveSource(null);
-  setStreamId(null);
-  setLiveUrl("");
-
-  if (endingStreamId) {
-    socketRef.current?.emit("end-stream", { streamId: endingStreamId });
-    await notifyStreamEnded(endingStreamId);
-  }
-
-  router.push("/stream");
-  router.refresh();
-  }
+  return (
     <main
       style={{
         minHeight: "100vh",
