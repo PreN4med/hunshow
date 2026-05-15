@@ -253,11 +253,6 @@ export default function StreamPage() {
                   <SidebarIcon kind="streaming" />
                   <span>Streaming</span>
                 </Link>
-
-                <Link href="/" className="sidebarItem">
-                  <SidebarIcon kind="qa" />
-                  <span>Q&amp;A</span>
-                </Link>
               </nav>
             </div>
           </aside>
