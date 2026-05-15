@@ -202,11 +202,6 @@ export default function LikedVideosPage() {
                   <SidebarIcon kind="streaming" />
                   <span>Streaming</span>
                 </Link>
-
-                <Link href="/" className="sidebarItem">
-                  <SidebarIcon kind="qa" />
-                  <span>Q&amp;A</span>
-                </Link>
               </nav>
             </div>
           </aside>
@@ -241,7 +236,10 @@ export default function LikedVideosPage() {
                     />
                   </div>
 
-                  <button className="btn btnPrimary searchCompactBtn" type="submit">
+                  <button
+                    className="btn btnPrimary searchCompactBtn"
+                    type="submit"
+                  >
                     Search
                   </button>
                 </form>
